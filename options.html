@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>SuperSearch — Settings</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      max-width: 640px;
+      margin: 32px auto;
+      padding: 0 24px;
+      color: #1f1f1f;
+      background: #fafafa;
+    }
+    @media (prefers-color-scheme: dark) {
+      body { background: #1e1e1e; color: #d4d4d4; }
+      .card { background: #252526; border-color: #3c3c3c; }
+      kbd { background: #3c3c3c; border-color: #555; color: #eee; }
+      a { color: #4ec9ff; }
+    }
+    h1 { font-size: 20px; margin-bottom: 4px; }
+    p.muted { color: #777; margin-top: 0; }
+    .card {
+      background: #fff;
+      border: 1px solid #e5e5e5;
+      border-radius: 6px;
+      padding: 16px 20px;
+      margin: 16px 0;
+    }
+    h2 { font-size: 14px; margin: 0 0 12px; text-transform: uppercase; letter-spacing: 0.5px; color: #888; }
+    label.row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 0;
+      gap: 12px;
+    }
+    label.row + label.row { border-top: 1px solid #eee; }
+    @media (prefers-color-scheme: dark) {
+      label.row + label.row { border-top: 1px solid #333; }
+    }
+    .row-text { flex: 1; }
+    .row-text .title { font-weight: 500; }
+    .row-text .desc { font-size: 12px; color: #777; }
+    input[type="checkbox"] { transform: scale(1.2); cursor: pointer; }
+    kbd {
+      background: #f0f0f0;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+      padding: 2px 6px;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-size: 12px;
+    }
+    .shortcut-list { font-size: 13px; line-height: 2; }
+    button.link {
+      background: #007fd4;
+      color: white;
+      border: none;
+      padding: 8px 14px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    button.link:hover { background: #0098ff; }
+    .saved {
+      display: inline-block;
+      margin-left: 8px;
+      color: #2ea043;
+      font-size: 12px;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .saved.visible { opacity: 1; }
+  </style>
+</head>
+<body>
+  <h1>SuperSearch Settings</h1>
+  <p class="muted">VS Code-style find &amp; replace for any web page.</p>
+
+  <div class="card">
+    <h2>Behavior</h2>
+
+    <label class="row">
+      <span class="row-text">
+        <div class="title">Override Cmd/Ctrl+F</div>
+        <div class="desc">Open SuperSearch instead of Chrome's native find bar. May not work on every page.</div>
+      </span>
+      <input type="checkbox" id="overrideNativeFind"/>
+    </label>
+
+    <label class="row">
+      <span class="row-text">
+        <div class="title">Default: Match Case</div>
+        <div class="desc">Persists across sessions, like VS Code.</div>
+      </span>
+      <input type="checkbox" id="matchCase"/>
+    </label>
+
+    <label class="row">
+      <span class="row-text">
+        <div class="title">Default: Whole Word</div>
+        <div class="desc">Match the search query only at word boundaries.</div>
+      </span>
+      <input type="checkbox" id="wholeWord"/>
+    </label>
+
+    <label class="row">
+      <span class="row-text">
+        <div class="title">Default: Use Regular Expression</div>
+        <div class="desc">Treat the query as a JavaScript regex.</div>
+      </span>
+      <input type="checkbox" id="regex"/>
+    </label>
+
+    <span class="saved" id="saved">Saved</span>
+  </div>
+
+  <div class="card">
+    <h2>Keyboard Shortcuts</h2>
+    <div class="shortcut-list">
+      <div><kbd>Cmd/Ctrl + Shift + F</kbd> — Open find panel</div>
+      <div><kbd>Cmd/Ctrl + Shift + H</kbd> — Open with replace expanded</div>
+      <div><kbd>Esc</kbd> — Close panel</div>
+      <div><kbd>Enter</kbd> / <kbd>Shift + Enter</kbd> — Next / previous match</div>
+      <div><kbd>Alt + C</kbd> — Toggle Match Case</div>
+      <div><kbd>Alt + W</kbd> — Toggle Whole Word</div>
+      <div><kbd>Alt + R</kbd> — Toggle Regex</div>
+      <div><kbd>Alt + L</kbd> — Toggle Find in Selection (requires selection)</div>
+      <div><kbd>Cmd/Ctrl + Alt + Enter</kbd> — Replace All</div>
+    </div>
+    <p style="margin-top: 16px;">
+      <button class="link" id="customizeShortcuts">Customize shortcuts in chrome://extensions/shortcuts</button>
+    </p>
+    <p class="muted" style="font-size: 12px;">
+      Chrome only allows shortcut customization through its built-in shortcuts page. The button above opens it for you.
+    </p>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>
