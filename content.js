@@ -225,6 +225,10 @@
         </button>
         <div class="ss-input-wrap" data-role="find-wrap">
           <input class="ss-input" data-role="find" type="text" placeholder="Find" spellcheck="false" autocomplete="off"/>
+          <span class="ss-counter" data-role="counter"></span>
+          <button class="ss-clear-btn" data-action="clear-find" type="button" title="Clear" aria-label="Clear find">
+            <svg viewBox="0 0 16 16"><path d="M4.7 3.3l3.3 3.3 3.3-3.3 1.4 1.4L9.4 8l3.3 3.3-1.4 1.4L8 9.4l-3.3 3.3-1.4-1.4L6.6 8 3.3 4.7z"/></svg>
+          </button>
         </div>
         <div class="ss-toggles">
           <button class="ss-toggle ss-toggle-case" data-toggle="matchCase" title="Match Case (Alt+C)">Aa</button>
@@ -234,7 +238,6 @@
             <svg class="ss-icon" viewBox="0 0 16 16"><path d="M2 3h5v1H3v9h4v1H2V3zm12 11H9v-1h4V4H9V3h5v11z"/></svg>
           </button>
         </div>
-        <span class="ss-counter" data-role="counter">No results</span>
         <button class="ss-btn" data-action="prev" title="Previous Match (Shift+Enter)">
           <svg class="ss-icon" viewBox="0 0 16 16"><path d="M8 5.5l-4.5 4.5 1 1L8 7.5l3.5 3.5 1-1z"/></svg>
         </button>
@@ -249,9 +252,12 @@
         <span class="ss-grid-spacer"></span>
         <div class="ss-input-wrap">
           <input class="ss-input" data-role="replace" type="text" placeholder="Replace" spellcheck="false" autocomplete="off"/>
+          <span class="ss-replace-info" data-role="replace-info"></span>
+          <button class="ss-clear-btn" data-action="clear-replace" type="button" title="Clear" aria-label="Clear replace">
+            <svg viewBox="0 0 16 16"><path d="M4.7 3.3l3.3 3.3 3.3-3.3 1.4 1.4L9.4 8l3.3 3.3-1.4 1.4L8 9.4l-3.3 3.3-1.4-1.4L6.6 8 3.3 4.7z"/></svg>
+          </button>
         </div>
         <span class="ss-grid-spacer"></span>
-        <span class="ss-replace-info" data-role="replace-info"></span>
         <button class="ss-btn" data-action="replace-one" title="Replace (Enter in replace box)">
           <svg class="ss-icon" viewBox="0 0 16 16"><path d="M3 3h6v2h2V3a2 2 0 00-2-2H3a2 2 0 00-2 2v6a2 2 0 002 2h2v-2H3V3zm10 4H7a2 2 0 00-2 2v6a2 2 0 002 2h6a2 2 0 002-2V9a2 2 0 00-2-2zm0 8H7V9h6v6z"/></svg>
         </button>
@@ -263,6 +269,10 @@
       <div class="ss-hint ss-replace-hint">
         <svg class="ss-icon ss-hint-icon" viewBox="0 0 16 16"><path d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zm0 1a5.5 5.5 0 110 11 5.5 5.5 0 010-11zm0 2.25a.75.75 0 110 1.5.75.75 0 010-1.5zM7.25 7.5h1.5v4.25h-1.5V7.5z"/></svg>
         <span>Replace affects editable fields only.</span>
+      </div>
+      <div class="ss-notification" data-role="notification">
+        <svg class="ss-icon ss-notification-icon" viewBox="0 0 16 16"><path d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zm0 1a5.5 5.5 0 110 11 5.5 5.5 0 010-11zm0 2.25a.75.75 0 110 1.5.75.75 0 010-1.5zM7.25 7.5h1.5v4.25h-1.5V7.5z"/></svg>
+        <span class="ss-notification-text" data-role="notification-text"></span>
       </div>
     `;
     document.documentElement.appendChild(panel);
@@ -290,6 +300,18 @@
       else if (act === "toggle-replace") setReplaceVisible(!state.replaceVisible);
       else if (act === "replace-one") replaceCurrent();
       else if (act === "replace-all") replaceAll();
+      else if (act === "clear-find") {
+        ui.findInput.value = "";
+        state.query = "";
+        runDistributedSearch();
+        ui.findInput.focus();
+      }
+      else if (act === "clear-replace") {
+        ui.replaceInput.value = "";
+        state.replacement = "";
+        updateReplaceInfo();
+        ui.replaceInput.focus();
+      }
       if (tog) toggle(tog);
     });
 
@@ -303,6 +325,8 @@
       findWrap: panel.querySelector('[data-role="find-wrap"]'),
       replaceInfo: panel.querySelector('[data-role="replace-info"]'),
       dragRow: panel.querySelector('[data-role="drag-row"]'),
+      notification: panel.querySelector('[data-role="notification"]'),
+      notificationText: panel.querySelector('[data-role="notification-text"]'),
     };
 
     setupDrag();
@@ -513,7 +537,11 @@
 
   function closePanel() {
     state.open = false;
-    if (ui) ui.panel.classList.remove("open");
+    if (ui) {
+      ui.panel.classList.remove("open");
+      ui.notification.classList.remove("visible");
+      clearTimeout(showNotification._t);
+    }
     state.matches = [];
     state.currentLocalIndex = -1;
     state.totalGlobal = 0;
@@ -659,12 +687,10 @@
       return;
     }
     if (state.totalGlobal === 0) {
-      c.textContent = "No results";
+      c.textContent = "0/0";
       c.classList.add("no-results");
     } else {
-      const frameCount = state.frameCounts.size;
-      const suffix = frameCount > 1 ? ` · ${frameCount} frames` : "";
-      c.textContent = `${state.currentGlobalIdx + 1} of ${state.totalGlobal}${suffix}`;
+      c.textContent = `${state.currentGlobalIdx + 1}/${state.totalGlobal}`;
       c.classList.remove("no-results");
     }
   }
@@ -742,14 +768,17 @@
     updateReplaceInfo();
   }
 
-  function flashCounter(msg) {
+  function showNotification(msg) {
     if (!ui) return;
-    const prev = ui.counter.textContent;
-    ui.counter.textContent = msg;
-    setTimeout(() => {
-      if (ui && ui.counter.textContent === msg) updateCounter();
-    }, 1200);
+    ui.notificationText.textContent = msg;
+    ui.notification.classList.add("visible");
+    clearTimeout(showNotification._t);
+    showNotification._t = setTimeout(() => {
+      ui.notification.classList.remove("visible");
+    }, 2000);
   }
+  // Backwards-compat alias used by older call sites.
+  function flashCounter(msg) { showNotification(msg); }
 
   // ---------- local search engine (every frame) ----------
   function isVisible(el) {
