@@ -1,6 +1,6 @@
 # SuperSearch
 
-A Chrome extension that adds a VS Code–style find & replace overlay to any web page — with regex, whole-word, match-case, find-in-selection, cross-iframe match aggregation, and editable-field replace.
+A Chrome extension that adds a VS Code–style find overlay to any web page — with regex, whole-word, match-case, find-in-selection, and cross-iframe match aggregation. Searches DOM text, contenteditable elements, and `<input>` / `<textarea>` values.
 
 ## Install
 
@@ -12,14 +12,12 @@ A Chrome extension that adds a VS Code–style find & replace overlay to any web
 
 | Shortcut | Action |
 |---|---|
-| `Cmd/Ctrl + Shift + F` | Open find |
-| `Cmd/Ctrl + Shift + H` | Open with replace |
+| `Cmd/Ctrl + F` | Open find (overrides Chrome's native bar by default; toggle in options) |
 | `Enter` / `Shift + Enter` | Next / previous |
 | `Alt + C / W / R / L` | Match Case / Whole Word / Regex / In Selection |
-| `Cmd/Ctrl + Alt + Enter` | Replace All |
 | `Esc` | Close |
 
-Customize at `chrome://extensions/shortcuts`.
+You can also click the toolbar icon to open the panel.
 
 ## License
 

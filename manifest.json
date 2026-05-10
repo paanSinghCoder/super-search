@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "SuperSearch — VS Code Find for Chrome",
+  "name": "SuperSearch - VS Code Find for Chrome",
   "version": "1.0.0",
-  "description": "VS Code-style find & replace overlay with regex, whole word, match case, find-in-selection, and editable-field replace.",
+  "description": "VS Code-style find overlay with regex, whole word, match case, find-in-selection, and cross-iframe search.",
   "permissions": ["storage", "activeTab", "scripting"],
   "host_permissions": ["<all_urls>"],
   "background": {

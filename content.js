@@ -25,15 +25,12 @@
     //   { type: "range", range: Range }                       — page DOM text / contenteditable
     //   { type: "field", element, start, end, isField }       — input / textarea value
     matches: [],
-    editableMatches: [],
     currentLocalIndex: -1, // index into matches (-1 = none current here)
     fieldMatchEls: new Set(), // currently outlined field elements (for cleanup)
 
     // top-frame-only state
     open: false,
-    replaceVisible: false,
     overrideNativeFind: true, // Cmd/Ctrl+F opens SuperSearch by default; user can disable in options
-    replacement: "",
     // Top frame is always 0. Subframes start at -1 until ss-whoami resolves —
     // commands targeted at a specific frameId are ignored until then to avoid
     // a race where an uninitialized subframe wrongly matches frameId 0.
@@ -93,8 +90,7 @@
   if (IS_TOP) {
     chrome.runtime.onMessage.addListener((msg) => {
       if (msg?.type !== "super-search") return;
-      if (msg.action === "open") openPanel(false);
-      else if (msg.action === "open-replace") openPanel(true);
+      if (msg.action === "open") openPanel();
       else if (msg.action === "close") closePanel();
     });
 
@@ -176,24 +172,8 @@
     } else if (payload.cmd === "clear") {
       state.query = "";
       state.matches = [];
-      state.editableMatches = [];
       state.currentLocalIndex = -1;
       clearHighlights();
-    } else if (payload.cmd === "replace-all") {
-      state.replacement = payload.replacement;
-      const replaced = doReplaceAll();
-      replyToTop({ cmd: "replaced", count: replaced });
-      runLocalSearch();
-      replyToTop({ cmd: "count", nonce: payload.nonce, count: state.matches.length });
-    } else if (payload.cmd === "replace-current") {
-      if (state.myFrameId < 0) return;
-      // only the frame holding the current match should act
-      if (payload.frameId === state.myFrameId) {
-        state.replacement = payload.replacement;
-        doReplaceCurrent();
-        runLocalSearch();
-        replyToTop({ cmd: "count", nonce: payload.nonce, count: state.matches.length });
-      }
     }
   }
 
@@ -215,9 +195,6 @@
     panel.setAttribute("data-super-search", "panel");
     panel.innerHTML = `
       <div class="ss-row">
-        <button class="ss-btn ss-toggle-replace" title="Toggle Replace (Cmd/Ctrl+Shift+H)" data-action="toggle-replace">
-          <svg class="ss-icon" viewBox="0 0 16 16"><path d="M6 4l4 4-4 4V4z"/></svg>
-        </button>
         <div class="ss-input-wrap" data-role="find-wrap">
           <input class="ss-input" data-role="find" type="text" placeholder="Find" spellcheck="false" autocomplete="off"/>
           <span class="ss-counter" data-role="counter"></span>
@@ -243,28 +220,6 @@
           <svg class="ss-icon" viewBox="0 0 16 16"><path d="M4.7 3.3l3.3 3.3 3.3-3.3 1.4 1.4L9.4 8l3.3 3.3-1.4 1.4L8 9.4l-3.3 3.3-1.4-1.4L6.6 8 3.3 4.7z"/></svg>
         </button>
       </div>
-      <div class="ss-row ss-replace-row">
-        <span class="ss-grid-spacer"></span>
-        <div class="ss-input-wrap">
-          <input class="ss-input" data-role="replace" type="text" placeholder="Replace" spellcheck="false" autocomplete="off"/>
-          <span class="ss-replace-info" data-role="replace-info"></span>
-          <button class="ss-clear-btn" data-action="clear-replace" type="button" title="Clear" aria-label="Clear replace">
-            <svg viewBox="0 0 16 16"><path d="M4.7 3.3l3.3 3.3 3.3-3.3 1.4 1.4L9.4 8l3.3 3.3-1.4 1.4L8 9.4l-3.3 3.3-1.4-1.4L6.6 8 3.3 4.7z"/></svg>
-          </button>
-        </div>
-        <span class="ss-grid-spacer"></span>
-        <button class="ss-btn" data-action="replace-one" title="Replace (Enter in replace box)">
-          <svg class="ss-icon" viewBox="0 0 16 16"><path d="M3 3h6v2h2V3a2 2 0 00-2-2H3a2 2 0 00-2 2v6a2 2 0 002 2h2v-2H3V3zm10 4H7a2 2 0 00-2 2v6a2 2 0 002 2h6a2 2 0 002-2V9a2 2 0 00-2-2zm0 8H7V9h6v6z"/></svg>
-        </button>
-        <button class="ss-btn" data-action="replace-all" title="Replace All (Cmd/Ctrl+Alt+Enter)">
-          <svg class="ss-icon" viewBox="0 0 16 16"><path d="M2 2h6v2h2V2a2 2 0 00-2-2H2a2 2 0 00-2 2v6a2 2 0 002 2h2V8H2V2zm10 5H6a2 2 0 00-2 2v5a2 2 0 002 2h6a2 2 0 002-2V9a2 2 0 00-2-2zm0 7H6V9h6v5zm-4-3h2v1H8v-1z"/></svg>
-        </button>
-        <span class="ss-grid-spacer"></span>
-      </div>
-      <div class="ss-hint ss-replace-hint">
-        <svg class="ss-icon ss-hint-icon" viewBox="0 0 16 16"><path d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zm0 1a5.5 5.5 0 110 11 5.5 5.5 0 010-11zm0 2.25a.75.75 0 110 1.5.75.75 0 010-1.5zM7.25 7.5h1.5v4.25h-1.5V7.5z"/></svg>
-        <span>Replace affects editable fields only.</span>
-      </div>
       <div class="ss-notification" data-role="notification">
         <svg class="ss-icon ss-notification-icon" viewBox="0 0 16 16"><path d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zm0 1a5.5 5.5 0 110 11 5.5 5.5 0 010-11zm0 2.25a.75.75 0 110 1.5.75.75 0 010-1.5zM7.25 7.5h1.5v4.25h-1.5V7.5z"/></svg>
         <span class="ss-notification-text" data-role="notification-text"></span>
@@ -273,15 +228,10 @@
     document.documentElement.appendChild(panel);
 
     const findInput = panel.querySelector('[data-role="find"]');
-    const replaceInput = panel.querySelector('[data-role="replace"]');
 
     findInput.addEventListener("input", () => {
       state.query = findInput.value;
       runDistributedSearch();
-    });
-    replaceInput.addEventListener("input", () => {
-      state.replacement = replaceInput.value;
-      updateReplaceInfo();
     });
 
     panel.addEventListener("click", (e) => {
@@ -292,20 +242,11 @@
       if (act === "close") closePanel();
       else if (act === "next") navigate(1);
       else if (act === "prev") navigate(-1);
-      else if (act === "toggle-replace") setReplaceVisible(!state.replaceVisible);
-      else if (act === "replace-one") replaceCurrent();
-      else if (act === "replace-all") replaceAll();
       else if (act === "clear-find") {
         ui.findInput.value = "";
         state.query = "";
         runDistributedSearch();
         ui.findInput.focus();
-      }
-      else if (act === "clear-replace") {
-        ui.replaceInput.value = "";
-        state.replacement = "";
-        updateReplaceInfo();
-        ui.replaceInput.focus();
       }
       if (tog) toggle(tog);
     });
@@ -315,10 +256,8 @@
     ui = {
       panel,
       findInput,
-      replaceInput,
       counter: panel.querySelector('[data-role="counter"]'),
       findWrap: panel.querySelector('[data-role="find-wrap"]'),
-      replaceInfo: panel.querySelector('[data-role="replace-info"]'),
       notification: panel.querySelector('[data-role="notification"]'),
       notificationText: panel.querySelector('[data-role="notification-text"]'),
     };
@@ -349,16 +288,6 @@
     if (e.target === ui.findInput && e.key === "Enter") {
       e.preventDefault();
       navigate(e.shiftKey ? -1 : 1);
-      return;
-    }
-    if (e.target === ui.replaceInput && e.key === "Enter" && !e.shiftKey && !(e.metaKey || e.ctrlKey || e.altKey)) {
-      e.preventDefault();
-      replaceCurrent();
-      return;
-    }
-    if ((e.metaKey || e.ctrlKey) && e.altKey && e.key === "Enter") {
-      e.preventDefault();
-      replaceAll();
       return;
     }
     if (e.altKey && !e.metaKey && !e.ctrlKey) {
@@ -414,16 +343,7 @@
     return null;
   }
 
-  function setReplaceVisible(v) {
-    state.replaceVisible = v;
-    if (!ui) return;
-    ui.panel.classList.toggle("replace-open", v);
-    if (v) ui.replaceInput.focus();
-    else ui.findInput.focus();
-    updateReplaceInfo();
-  }
-
-  function openPanel(withReplace) {
+  function openPanel() {
     if (!IS_TOP) return;
     buildUI();
 
@@ -437,7 +357,6 @@
 
     state.open = true;
     ui.panel.classList.add("open");
-    setReplaceVisible(!!withReplace);
 
     if (selStr.trim()) {
       if (selStr.includes("\n")) {
@@ -501,7 +420,6 @@
       applyHighlights();
       broadcast({ cmd: "clear" });
       updateCounter();
-      updateReplaceInfo();
       return;
     }
 
@@ -536,7 +454,6 @@
     }
     state.totalGlobal = state.matches.length;
     updateCounter();
-    updateReplaceInfo();
   }
 
   function scheduleAggregate() {
@@ -618,79 +535,6 @@
       c.textContent = `${state.currentGlobalIdx + 1}/${state.totalGlobal}`;
       c.classList.remove("no-results");
     }
-  }
-
-  function updateReplaceInfo() {
-    if (!ui) return;
-    if (!state.replaceVisible) {
-      ui.replaceInfo.textContent = "";
-      return;
-    }
-    const total = state.editableMatches.reduce((s, e) => s + e.matches.length, 0);
-    const fields = state.editableMatches.length;
-    if (!total) {
-      ui.replaceInfo.textContent = "0 in editables";
-    } else {
-      ui.replaceInfo.textContent = `${total} in ${fields} field${fields === 1 ? "" : "s"}`;
-    }
-  }
-
-  // ---------- replace orchestration ----------
-  function replaceCurrent() {
-    if (!IS_TOP) return;
-    if (!state.replaceVisible) {
-      setReplaceVisible(true);
-      return;
-    }
-    if (state.totalGlobal === 0) {
-      flashCounter("No matches");
-      return;
-    }
-    if (state.currentFrameId === 0) {
-      doReplaceCurrent();
-      runDistributedSearch();
-    } else {
-      // ask the holding frame to replace its current match
-      broadcast({
-        cmd: "replace-current",
-        frameId: state.currentFrameId,
-        replacement: state.replacement,
-        nonce: state.searchNonce,
-      });
-      // after sub-frame replaces and re-counts, re-aggregate
-      setTimeout(() => runDistributedSearch(), 50);
-    }
-  }
-
-  function replaceAll() {
-    if (!IS_TOP) return;
-    if (!state.replaceVisible) {
-      setReplaceVisible(true);
-      return;
-    }
-    state.searchNonce++;
-    const nonce = state.searchNonce;
-    let totalReplaced = doReplaceAll();
-    broadcast({ cmd: "replace-all", replacement: state.replacement, nonce });
-
-    // We'll re-aggregate after a window
-    clearTimeout(state.aggregateTimer);
-    state.frameCounts = new Map();
-    runLocalSearch();
-    state.frameCounts.set(0, state.matches.length);
-
-    state.aggregateTimer = setTimeout(() => {
-      finalizeSearch(nonce);
-      flashCounter(`Replaced ${totalReplaced}+`);
-    }, 300);
-
-    state.totalGlobal = state.matches.length;
-    state.currentLocalIndex = state.matches.length ? 0 : -1;
-    state.currentGlobalIdx = state.matches.length ? 0 : -1;
-    state.currentFrameId = state.matches.length ? 0 : -1;
-    applyHighlights();
-    updateCounter();
-    updateReplaceInfo();
   }
 
   function showNotification(msg) {
@@ -831,35 +675,6 @@
     return ranges;
   }
 
-  function findEditableMatches() {
-    if (!state.query) return [];
-    let regex;
-    try { regex = buildRegex(state.query, state); } catch { return []; }
-    if (!regex) return [];
-
-    const out = [];
-    const editables = document.querySelectorAll(
-      'input:not([type="password"]):not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="reset"]):not([type="button"]):not([type="file"]):not([type="image"]):not([type="color"]):not([type="range"]), textarea, [contenteditable=""], [contenteditable="true"]'
-    );
-
-    for (const el of editables) {
-      if (el.closest(`#${PANEL_ID}`)) continue;
-      if (!isVisible(el)) continue;
-      const isField = el.tagName === "INPUT" || el.tagName === "TEXTAREA";
-      const value = isField ? el.value : el.textContent;
-      if (!value) continue;
-      regex.lastIndex = 0;
-      let m;
-      const matches = [];
-      while ((m = regex.exec(value)) !== null) {
-        if (m[0].length === 0) { regex.lastIndex++; continue; }
-        matches.push({ start: m.index, end: m.index + m[0].length, text: m[0] });
-      }
-      if (matches.length) out.push({ element: el, matches, isField });
-    }
-    return out;
-  }
-
   function applyHighlights() {
     // Wipe previous field outlines before rebuilding.
     clearFieldOutlines();
@@ -931,7 +746,6 @@
 
   function runLocalSearch() {
     state.matches = findAllMatches();
-    state.editableMatches = findEditableMatches();
     state.currentLocalIndex = state.matches.length ? 0 : -1;
     applyHighlights();
   }
@@ -1028,85 +842,6 @@
       // Position the caret on the match without stealing focus from the find box.
       try { match.element.setSelectionRange(match.start, match.end); } catch {}
     }
-  }
-
-  // ---------- replace primitives (every frame) ----------
-  function doReplaceCurrent() {
-    if (!state.editableMatches.length) return 0;
-    const focused = document.activeElement;
-    let target = state.editableMatches.find((e) => e.element === focused);
-    if (!target) target = state.editableMatches[0];
-    const first = target.matches[0];
-    replaceInElement(target.element, target.isField, first.start, first.end, state.replacement);
-    return 1;
-  }
-
-  function doReplaceAll() {
-    if (!state.editableMatches.length) return 0;
-    let total = 0;
-    for (const entry of state.editableMatches) {
-      const { element, matches, isField } = entry;
-      if (isField) {
-        let value = element.value;
-        for (let i = matches.length - 1; i >= 0; i--) {
-          const m = matches[i];
-          value = value.slice(0, m.start) + state.replacement + value.slice(m.end);
-          total++;
-        }
-        setFieldValue(element, value);
-      } else {
-        replaceInContentEditable(element, matches, state.replacement);
-        total += matches.length;
-      }
-    }
-    return total;
-  }
-
-  function replaceInElement(el, isField, start, end, replacement) {
-    if (isField) {
-      const v = el.value;
-      setFieldValue(el, v.slice(0, start) + replacement + v.slice(end));
-    } else {
-      replaceInContentEditable(el, [{ start, end }], replacement);
-    }
-  }
-
-  function setFieldValue(el, newVal) {
-    const proto = el.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-    const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
-    if (setter) setter.call(el, newVal);
-    else el.value = newVal;
-    el.dispatchEvent(new Event("input", { bubbles: true }));
-    el.dispatchEvent(new Event("change", { bubbles: true }));
-  }
-
-  function replaceInContentEditable(el, matches, replacement) {
-    const nodes = [];
-    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
-    let n;
-    while ((n = walker.nextNode())) nodes.push(n);
-
-    const segs = [];
-    let full = "";
-    for (const node of nodes) {
-      segs.push({ node, start: full.length, end: full.length + node.nodeValue.length });
-      full += node.nodeValue;
-    }
-
-    const sorted = [...matches].sort((a, b) => b.start - a.start);
-    for (const m of sorted) {
-      const startSeg = segs.find((s) => s.start <= m.start && m.start < s.end);
-      const endSeg = segs.find((s) => s.start < m.end && m.end <= s.end);
-      if (!startSeg || !endSeg) continue;
-      const range = document.createRange();
-      try {
-        range.setStart(startSeg.node, m.start - startSeg.start);
-        range.setEnd(endSeg.node, m.end - endSeg.start);
-        range.deleteContents();
-        range.insertNode(document.createTextNode(replacement));
-      } catch {}
-    }
-    el.dispatchEvent(new Event("input", { bubbles: true }));
   }
 
   // ---------- DOM mutation observer (re-run on detach) ----------
