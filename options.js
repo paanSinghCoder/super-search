@@ -1,4 +1,6 @@
 const KEYS = ["overrideNativeFind", "matchCase", "wholeWord", "regex"];
+// Defaults applied when storage has no value yet.
+const DEFAULTS = { overrideNativeFind: true, matchCase: false, wholeWord: false, regex: false };
 
 function showSaved() {
   const el = document.getElementById("saved");
@@ -11,13 +13,10 @@ chrome.storage.local.get(KEYS, (prefs) => {
   for (const k of KEYS) {
     const cb = document.getElementById(k);
     if (!cb) continue;
-    cb.checked = !!prefs[k];
+    cb.checked = prefs[k] === undefined ? !!DEFAULTS[k] : !!prefs[k];
     cb.addEventListener("change", () => {
       chrome.storage.local.set({ [k]: cb.checked }, showSaved);
     });
   }
 });
 
-document.getElementById("customizeShortcuts").addEventListener("click", () => {
-  chrome.tabs.create({ url: "chrome://extensions/shortcuts" });
-});

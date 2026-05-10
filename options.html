@@ -82,8 +82,8 @@
 
     <label class="row">
       <span class="row-text">
-        <div class="title">Override Cmd/Ctrl+F</div>
-        <div class="desc">Open SuperSearch instead of Chrome's native find bar. May not work on every page.</div>
+        <div class="title">Open with Cmd/Ctrl+F</div>
+        <div class="desc">On by default — Cmd+F (Mac) / Ctrl+F (Windows) opens SuperSearch instead of Chrome's native find bar. Uncheck to restore native behavior. The override may not work on pages that block keydown events.</div>
       </span>
       <input type="checkbox" id="overrideNativeFind"/>
     </label>
@@ -118,8 +118,7 @@
   <div class="card">
     <h2>Keyboard Shortcuts</h2>
     <div class="shortcut-list">
-      <div><kbd>Cmd/Ctrl + Shift + F</kbd> — Open find panel</div>
-      <div><kbd>Cmd/Ctrl + Shift + H</kbd> — Open with replace expanded</div>
+      <div><kbd>Cmd + F</kbd> / <kbd>Ctrl + F</kbd> — Open find panel (when override is on)</div>
       <div><kbd>Esc</kbd> — Close panel</div>
       <div><kbd>Enter</kbd> / <kbd>Shift + Enter</kbd> — Next / previous match</div>
       <div><kbd>Alt + C</kbd> — Toggle Match Case</div>
@@ -128,11 +127,8 @@
       <div><kbd>Alt + L</kbd> — Toggle Find in Selection (requires selection)</div>
       <div><kbd>Cmd/Ctrl + Alt + Enter</kbd> — Replace All</div>
     </div>
-    <p style="margin-top: 16px;">
-      <button class="link" id="customizeShortcuts">Customize shortcuts in chrome://extensions/shortcuts</button>
-    </p>
-    <p class="muted" style="font-size: 12px;">
-      Chrome only allows shortcut customization through its built-in shortcuts page. The button above opens it for you.
+    <p class="muted" style="font-size: 12px; margin-top: 12px;">
+      You can also click the SuperSearch toolbar icon to open the panel.
     </p>
   </div>
 

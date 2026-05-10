@@ -7,6 +7,11 @@
   background-color: #ff8a3d;
   color: #000;
 }
+/* Find-in-selection scope tint — sits underneath match highlights */
+::highlight(super-search-scope) {
+  background-color: rgba(64, 169, 255, 0.18);
+  color: inherit;
+}
 
 /* Outline matches inside <input>/<textarea> — Highlight API can't reach those */
 .ss-field-match {

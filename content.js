@@ -5,6 +5,7 @@
   const PANEL_ID = "super-search-panel";
   const HL_ALL = "super-search-match";
   const HL_CUR = "super-search-current";
+  const HL_SCOPE = "super-search-scope";
   const IS_TOP = window === window.top;
 
   // ---------- shared state ----------
@@ -15,6 +16,8 @@
     regex: false,
     findInSelection: false,
     selectionRange: null,
+    // Last non-collapsed selection on the page (captured before panel takes focus)
+    savedSelectionRange: null,
 
     // local search state (per frame)
     query: "",
@@ -29,7 +32,7 @@
     // top-frame-only state
     open: false,
     replaceVisible: false,
-    overrideNativeFind: false,
+    overrideNativeFind: true, // Cmd/Ctrl+F opens SuperSearch by default; user can disable in options
     replacement: "",
     // Top frame is always 0. Subframes start at -1 until ss-whoami resolves —
     // commands targeted at a specific frameId are ignored until then to avoid
@@ -53,7 +56,8 @@
     state.matchCase = !!prefs.matchCase;
     state.wholeWord = !!prefs.wholeWord;
     state.regex = !!prefs.regex;
-    state.overrideNativeFind = !!prefs.overrideNativeFind;
+    // Default ON unless explicitly disabled (undefined means user never touched it).
+    state.overrideNativeFind = prefs.overrideNativeFind !== false;
     state.position = prefs.panelPosition || null;
     if (ui) {
       syncToggleUI();
@@ -66,7 +70,7 @@
     if (changes.matchCase) state.matchCase = !!changes.matchCase.newValue;
     if (changes.wholeWord) state.wholeWord = !!changes.wholeWord.newValue;
     if (changes.regex) state.regex = !!changes.regex.newValue;
-    if (changes.overrideNativeFind) state.overrideNativeFind = !!changes.overrideNativeFind.newValue;
+    if (changes.overrideNativeFind) state.overrideNativeFind = changes.overrideNativeFind.newValue !== false;
     if (ui) syncToggleUI();
   });
 
@@ -114,6 +118,23 @@
       },
       true
     );
+
+    // Continuously capture the user's selection on the page so we still have it
+    // after focus moves into the panel. Selections inside the panel itself or
+    // collapsed selections are ignored.
+    document.addEventListener("selectionchange", () => {
+      // Don't clobber the saved scope while find-in-selection is active.
+      if (state.findInSelection) return;
+      const sel = document.getSelection();
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+      const range = sel.getRangeAt(0);
+      const anchor = range.commonAncestorContainer;
+      const el = anchor.nodeType === 1 ? anchor : anchor.parentElement;
+      if (!el || el.closest(`#${PANEL_ID}`)) return;
+      try {
+        state.savedSelectionRange = range.cloneRange();
+      } catch {}
+    });
   }
 
   // ---------- cross-frame relay listener (every frame) ----------
@@ -402,13 +423,13 @@
   function toggle(key) {
     if (key === "findInSelection") {
       if (!state.findInSelection) {
-        const sel = window.getSelection();
-        if (sel && sel.rangeCount && !sel.isCollapsed) {
-          state.selectionRange = sel.getRangeAt(0).cloneRange();
-          state.findInSelection = true;
-        } else {
+        const range = pickSelectionRange();
+        if (!range) {
+          flashCounter("Select text first");
           return;
         }
+        state.selectionRange = range;
+        state.findInSelection = true;
       } else {
         state.findInSelection = false;
         state.selectionRange = null;
@@ -419,6 +440,28 @@
     }
     syncToggleUI();
     runDistributedSearch();
+  }
+
+  // Return a usable selection Range, preferring a live page selection but
+  // falling back to the most recent one we captured before the panel grabbed focus.
+  function pickSelectionRange() {
+    const sel = document.getSelection();
+    if (sel && !sel.isCollapsed && sel.rangeCount > 0) {
+      const r = sel.getRangeAt(0);
+      const anchor = r.commonAncestorContainer;
+      const el = anchor.nodeType === 1 ? anchor : anchor.parentElement;
+      if (el && !el.closest(`#${PANEL_ID}`)) {
+        try { return r.cloneRange(); } catch {}
+      }
+    }
+    if (state.savedSelectionRange) {
+      const r = state.savedSelectionRange;
+      // Validate that the range is still attached to the document.
+      if (r.startContainer.isConnected && r.endContainer.isConnected) {
+        try { return r.cloneRange(); } catch {}
+      }
+    }
+    return null;
   }
 
   function setReplaceVisible(v) {
@@ -433,16 +476,34 @@
   function openPanel(withReplace) {
     if (!IS_TOP) return;
     buildUI();
+
+    // Capture selection BEFORE focusing the find input, otherwise focus
+    // moves into the input and clears the document selection.
+    const sel = document.getSelection();
+    const selStr = sel?.toString() ?? "";
+    if (sel && !sel.isCollapsed && sel.rangeCount > 0) {
+      try { state.savedSelectionRange = sel.getRangeAt(0).cloneRange(); } catch {}
+    }
+
     state.open = true;
     ui.panel.classList.add("open");
     setReplaceVisible(!!withReplace);
     applyPanelPosition();
 
-    const sel = window.getSelection();
-    if (sel && sel.toString().trim() && !sel.toString().includes("\n")) {
-      const seed = sel.toString();
-      ui.findInput.value = seed;
-      state.query = seed;
+    if (selStr.trim()) {
+      if (selStr.includes("\n")) {
+        // Multi-line: scope the search to it, like VS Code.
+        const range = pickSelectionRange();
+        if (range) {
+          state.selectionRange = range;
+          state.findInSelection = true;
+          syncToggleUI();
+        }
+      } else {
+        // Single-line: seed the query.
+        ui.findInput.value = selStr;
+        state.query = selStr;
+      }
     }
 
     ui.findInput.focus();
@@ -482,7 +543,9 @@
       state.totalGlobal = 0;
       state.currentGlobalIdx = -1;
       state.frameCounts.clear();
-      clearHighlights();
+      // applyHighlights wipes match highlights but keeps the scope tint if
+      // find-in-selection is active. clearHighlights would erase that too.
+      applyHighlights();
       broadcast({ cmd: "clear" });
       updateCounter();
       updateReplaceInfo();
@@ -850,8 +913,8 @@
     if (CSS.highlights) {
       CSS.highlights.delete(HL_ALL);
       CSS.highlights.delete(HL_CUR);
+      // HL_SCOPE is refreshed below.
     }
-    if (!state.matches.length) return;
 
     const allRanges = [];
     let currentRange = null;
@@ -870,10 +933,28 @@
 
     if (CSS.highlights) {
       if (allRanges.length) {
-        try { CSS.highlights.set(HL_ALL, new Highlight(...allRanges)); } catch {}
+        try {
+          const h = new Highlight(...allRanges);
+          h.priority = 1;
+          CSS.highlights.set(HL_ALL, h);
+        } catch {}
       }
       if (currentRange) {
-        try { CSS.highlights.set(HL_CUR, new Highlight(currentRange)); } catch {}
+        try {
+          const h = new Highlight(currentRange);
+          h.priority = 2;
+          CSS.highlights.set(HL_CUR, h);
+        } catch {}
+      }
+      // Scope tint sits underneath the matches.
+      if (state.findInSelection && state.selectionRange) {
+        try {
+          const h = new Highlight(state.selectionRange);
+          h.priority = 0;
+          CSS.highlights.set(HL_SCOPE, h);
+        } catch {}
+      } else {
+        CSS.highlights.delete(HL_SCOPE);
       }
     }
   }
@@ -889,6 +970,7 @@
     if (CSS.highlights) {
       CSS.highlights.delete(HL_ALL);
       CSS.highlights.delete(HL_CUR);
+      CSS.highlights.delete(HL_SCOPE);
     }
     clearFieldOutlines();
   }

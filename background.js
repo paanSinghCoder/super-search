@@ -1,19 +1,4 @@
-// Routes keyboard commands and cross-frame messages.
-
-chrome.commands.onCommand.addListener(async (command) => {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.id) return;
-
-  let action;
-  if (command === "open-find") action = "open";
-  else if (command === "open-find-replace") action = "open-replace";
-  else return;
-
-  // Send only to top frame — it owns the panel.
-  try {
-    await chrome.tabs.sendMessage(tab.id, { type: "super-search", action }, { frameId: 0 });
-  } catch (e) {}
-});
+// Routes the toolbar-click action and cross-frame messages.
 
 chrome.action.onClicked.addListener(async (tab) => {
   if (!tab.id) return;
