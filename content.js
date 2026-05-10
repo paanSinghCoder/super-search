@@ -44,13 +44,12 @@
     currentFrameId: -1,
     searchNonce: 0,
     aggregateTimer: null,
-    position: null, // {x, y} or null = default
   };
 
   let ui = null;
 
   // ---------- preferences ----------
-  const PREF_KEYS = ["matchCase", "wholeWord", "regex", "overrideNativeFind", "panelPosition"];
+  const PREF_KEYS = ["matchCase", "wholeWord", "regex", "overrideNativeFind"];
   chrome.storage?.local.get(PREF_KEYS, (prefs) => {
     if (!prefs) return;
     state.matchCase = !!prefs.matchCase;
@@ -58,11 +57,7 @@
     state.regex = !!prefs.regex;
     // Default ON unless explicitly disabled (undefined means user never touched it).
     state.overrideNativeFind = prefs.overrideNativeFind !== false;
-    state.position = prefs.panelPosition || null;
-    if (ui) {
-      syncToggleUI();
-      applyPanelPosition();
-    }
+    if (ui) syncToggleUI();
   });
 
   chrome.storage?.onChanged.addListener((changes, area) => {
@@ -219,7 +214,7 @@
     panel.id = PANEL_ID;
     panel.setAttribute("data-super-search", "panel");
     panel.innerHTML = `
-      <div class="ss-row" data-role="drag-row">
+      <div class="ss-row">
         <button class="ss-btn ss-toggle-replace" title="Toggle Replace (Cmd/Ctrl+Shift+H)" data-action="toggle-replace">
           <svg class="ss-icon" viewBox="0 0 16 16"><path d="M6 4l4 4-4 4V4z"/></svg>
         </button>
@@ -324,14 +319,11 @@
       counter: panel.querySelector('[data-role="counter"]'),
       findWrap: panel.querySelector('[data-role="find-wrap"]'),
       replaceInfo: panel.querySelector('[data-role="replace-info"]'),
-      dragRow: panel.querySelector('[data-role="drag-row"]'),
       notification: panel.querySelector('[data-role="notification"]'),
       notificationText: panel.querySelector('[data-role="notification-text"]'),
     };
 
-    setupDrag();
     syncToggleUI();
-    applyPanelPosition();
     return ui;
   }
 
@@ -346,72 +338,6 @@
     for (const [key, sel] of Object.entries(map)) {
       ui.panel.querySelector(sel)?.classList.toggle("active", !!state[key]);
     }
-  }
-
-  function applyPanelPosition() {
-    if (!ui) return;
-    const p = state.position;
-    if (!p) {
-      ui.panel.style.left = "";
-      ui.panel.style.right = "";
-      ui.panel.style.top = "";
-      return;
-    }
-    // Clamp into viewport
-    const w = ui.panel.offsetWidth || 360;
-    const h = ui.panel.offsetHeight || 36;
-    const x = Math.max(0, Math.min(window.innerWidth - w, p.x));
-    const y = Math.max(0, Math.min(window.innerHeight - h, p.y));
-    ui.panel.style.left = `${x}px`;
-    ui.panel.style.top = `${y}px`;
-    ui.panel.style.right = "auto";
-  }
-
-  function setupDrag() {
-    if (!ui) return;
-    let dragging = false;
-    let startX = 0, startY = 0, origX = 0, origY = 0;
-
-    ui.panel.addEventListener("pointerdown", (e) => {
-      // Only initiate drag from non-interactive elements in the panel
-      const isInteractive = e.target.closest("input, button, .ss-toggle");
-      if (isInteractive) return;
-      const rect = ui.panel.getBoundingClientRect();
-      origX = rect.left;
-      origY = rect.top;
-      startX = e.clientX;
-      startY = e.clientY;
-      dragging = true;
-      ui.panel.setPointerCapture(e.pointerId);
-      ui.panel.style.cursor = "grabbing";
-    });
-
-    ui.panel.addEventListener("pointermove", (e) => {
-      if (!dragging) return;
-      const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
-      const w = ui.panel.offsetWidth;
-      const h = ui.panel.offsetHeight;
-      const x = Math.max(0, Math.min(window.innerWidth - w, origX + dx));
-      const y = Math.max(0, Math.min(window.innerHeight - h, origY + dy));
-      ui.panel.style.left = `${x}px`;
-      ui.panel.style.top = `${y}px`;
-      ui.panel.style.right = "auto";
-    });
-
-    function endDrag(e) {
-      if (!dragging) return;
-      dragging = false;
-      ui.panel.style.cursor = "";
-      try { ui.panel.releasePointerCapture(e.pointerId); } catch {}
-      const rect = ui.panel.getBoundingClientRect();
-      state.position = { x: Math.round(rect.left), y: Math.round(rect.top) };
-      chrome.storage?.local.set({ panelPosition: state.position });
-    }
-    ui.panel.addEventListener("pointerup", endDrag);
-    ui.panel.addEventListener("pointercancel", endDrag);
-
-    window.addEventListener("resize", applyPanelPosition);
   }
 
   function onPanelKeydown(e) {
@@ -512,7 +438,6 @@
     state.open = true;
     ui.panel.classList.add("open");
     setReplaceVisible(!!withReplace);
-    applyPanelPosition();
 
     if (selStr.trim()) {
       if (selStr.includes("\n")) {

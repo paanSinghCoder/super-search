@@ -43,12 +43,22 @@
     0 1px 3px rgba(0, 0, 0, 0.08);
 
   /* Parent grid — both rows are subgrids of these columns */
-  display: none;
+  display: grid;
   grid-template-columns: 28px minmax(0, 1fr) auto 28px 28px 28px;
   row-gap: 0;
   column-gap: 0;
   padding: 6px;
   width: 440px;
+
+  /* Hidden state — animated in/out via .open class */
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-10px);
+  pointer-events: none;
+  transition:
+    opacity 160ms ease,
+    transform 220ms cubic-bezier(0.2, 0.7, 0.3, 1),
+    visibility 0s linear 220ms;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -62,13 +72,18 @@
   }
 }
 
-#super-search-panel.open { display: grid; }
+#super-search-panel.open {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  pointer-events: auto;
+  transition:
+    opacity 160ms ease,
+    transform 220ms cubic-bezier(0.2, 0.7, 0.3, 1),
+    visibility 0s linear 0s;
+}
 #super-search-panel * { box-sizing: border-box; }
 
-/* Drag affordance */
-#super-search-panel { cursor: grab; }
-#super-search-panel input,
-#super-search-panel button { cursor: auto; }
 #super-search-panel button { cursor: pointer; }
 
 /* Each row inherits the parent column track via subgrid */
@@ -219,10 +234,8 @@
   white-space: nowrap;
   flex-shrink: 0;
 }
-.ss-counter.no-results { color: #d93025; }
 @media (prefers-color-scheme: dark) {
   .ss-counter { color: #9aa0a6; }
-  .ss-counter.no-results { color: #f28b82; }
 }
 
 /* Round flat icon buttons — tight together */
