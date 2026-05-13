@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 800" width="1280" height="800">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f5f3ff"/>
+      <stop offset="100%" stop-color="#e9e3ff"/>
+    </linearGradient>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#4F46E5"/>
+      <stop offset="100%" stop-color="#9333EA"/>
+    </linearGradient>
+    <linearGradient id="iconBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#4F46E5"/>
+      <stop offset="100%" stop-color="#9333EA"/>
+    </linearGradient>
+    <filter id="windowShadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="20" stdDeviation="30" flood-opacity="0.12"/>
+    </filter>
+    <filter id="panelShadow" x="-20%" y="-50%" width="140%" height="200%">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-opacity="0.16"/>
+    </filter>
+  </defs>
+
+  <!-- Page background -->
+  <rect width="1280" height="800" fill="url(#bg)"/>
+
+  <!-- Browser window — centered: (1280-1000)/2=140, (800-360)/2=220 -->
+  <g transform="translate(140, 220)" filter="url(#windowShadow)">
+
+    <!-- Window shape -->
+    <rect x="0" y="0" width="1000" height="360" rx="14" fill="#ffffff" stroke="rgba(0,0,0,0.06)"/>
+
+    <!-- Top bar (with rounded top corners only) -->
+    <path d="M 0 14 Q 0 0 14 0 L 986 0 Q 1000 0 1000 14 L 1000 44 L 0 44 Z" fill="#f3f4f6"/>
+    <line x1="0" y1="44" x2="1000" y2="44" stroke="rgba(0,0,0,0.06)"/>
+
+    <!-- Traffic lights -->
+    <circle cx="22" cy="22" r="6" fill="#ed6a5e"/>
+    <circle cx="44" cy="22" r="6" fill="#f5bf4f"/>
+    <circle cx="66" cy="22" r="6" fill="#62c554"/>
+
+    <!-- URL pill (empty) -->
+    <rect x="120" y="12" width="720" height="20" rx="10" fill="#ffffff" stroke="rgba(0,0,0,0.08)"/>
+
+    <!-- Pinned extension icon (the SuperSearch icon) -->
+    <g transform="translate(870, 10)">
+      <rect x="0" y="0" width="24" height="24" rx="6" fill="url(#iconBg)"/>
+      <circle cx="10" cy="10" r="5" fill="none" stroke="#ffffff" stroke-width="1.7"/>
+      <line x1="14" y1="14" x2="19" y2="19" stroke="#ffffff" stroke-width="1.7" stroke-linecap="round"/>
+    </g>
+
+    <!-- ====== BODY (y >= 44) ====== -->
+
+    <!-- Title (two lines), left-aligned with 60px left padding -->
+    <text x="60" y="140" font-family="-apple-system, BlinkMacSystemFont, Inter, system-ui, sans-serif" font-size="60" font-weight="800" fill="#1e1b4b" letter-spacing="-2">Find like VS Code.</text>
+    <text x="60" y="220" font-family="-apple-system, BlinkMacSystemFont, Inter, system-ui, sans-serif" font-size="60" font-weight="800" fill="url(#brand)" letter-spacing="-2">Now in Chrome.</text>
+
+    <!-- Subtitle -->
+    <text x="60" y="270" font-family="-apple-system, Inter, sans-serif" font-size="18" font-weight="500" fill="#6b7280">Regex · Match Case · Whole Word · Find in Selection · Cross-iframe search · Matches inside form fields</text>
+
+    <!-- ====== Find panel — pixel-accurate replica of the real panel ====== -->
+    <!-- Real panel: 440px wide. Scaled to 360px here so it fits comfortably     -->
+    <!-- in the 1000px browser; internal element proportions match the live UI. -->
+    <!-- 6px panel padding, 36px row height (= 48px total panel height),         -->
+    <!-- 30px from the body's top and right edges.                               -->
+    <g transform="translate(610, 70)" filter="url(#panelShadow)">
+
+      <!-- Panel shell -->
+      <rect x="0" y="0" width="360" height="48" rx="10" fill="#ffffff" stroke="rgba(0,0,0,0.10)"/>
+
+      <!-- ============================================================ -->
+      <!-- INPUT WRAP   x=6 → 170 (width 164), height 30, padding 0 8    -->
+      <!-- ============================================================ -->
+
+      <!-- Search query text — like the user typed "search" -->
+      <text x="14" y="28" font-family="-apple-system, Segoe UI, system-ui, sans-serif" font-size="13" fill="#202124">search</text>
+
+      <!-- Inline counter, right-aligned within the wrap -->
+      <text x="142" y="28" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="11" fill="#80868b" text-anchor="end">1/17</text>
+
+      <!-- Clear × (10×10, centered at x=152, y=24) -->
+      <path d="M147 19 l10 10 m0 -10 l-10 10" stroke="#80868b" stroke-width="1.4" stroke-linecap="round" fill="none"/>
+
+      <!-- ============================================================ -->
+      <!-- TOGGLES   x=174 → 270 (4 cells × 24px), height 24             -->
+      <!-- ============================================================ -->
+
+      <!-- Aa  — Match Case -->
+      <text x="186" y="28" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="11" fill="#5f6368" text-anchor="middle">Aa</text>
+
+      <!-- ab  — Whole Word (underlined) -->
+      <text x="210" y="28" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="11" fill="#5f6368" text-anchor="middle" text-decoration="underline">ab</text>
+
+      <!-- .*  — Regex (ACTIVE: blue tint) -->
+      <rect x="222" y="12" width="24" height="24" rx="5" fill="rgba(26,115,232,0.14)"/>
+      <text x="234" y="28" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="11" font-style="italic" fill="#1a73e8" text-anchor="middle">.*</text>
+
+      <!-- [ ]  — Find in Selection (12×12 brackets, centered in 24×24 cell) -->
+      <g transform="translate(252, 18) scale(0.75)" fill="#5f6368">
+        <path d="M2 3 h5 v1 H3 v9 h4 v1 H2 V3z M14 14 H9 v-1 h4 V4 H9 V3 h5 v11z"/>
+      </g>
+
+      <!-- ============================================================ -->
+      <!-- NAV BUTTONS   x=270 → 354 (3 cells × 28px round), height 28   -->
+      <!-- ============================================================ -->
+
+      <!-- Prev — up chevron (16×16 icon centered in 28×28 button) -->
+      <g transform="translate(276, 16)" fill="#5f6368">
+        <path d="M8 5.5 l-4.5 4.5 l1 1 L8 7.5 l3.5 3.5 l1 -1z"/>
+      </g>
+
+      <!-- Next — down chevron -->
+      <g transform="translate(304, 16)" fill="#5f6368">
+        <path d="M8 10.5 l-4.5 -4.5 l1 -1 L8 8.5 l3.5 -3.5 l1 1z"/>
+      </g>
+
+      <!-- Close × — smaller stroked icon to match the chevrons' visual weight -->
+      <path d="M336 20 l8 8 m0 -8 l-8 8" stroke="#5f6368" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+
+    </g>
+
+  </g>
+</svg>
