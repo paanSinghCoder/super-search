@@ -54,6 +54,7 @@
   let pendingSetCurrent = null;
   let searchInputTimer = null;
   let onDocumentKeydownRef = null;
+  let onDocumentWheelRef = null;
 
   const PREF_KEYS = ["matchCase", "wholeWord", "regex", "overrideNativeFind"];
   chrome.storage?.local.get(PREF_KEYS, (prefs) => {
@@ -153,7 +154,9 @@
     if (payload.frameId === state.myFrameId) {
       state.currentLocalIndex = payload.indexInFrame;
       applyHighlights();
-      if (state.matches[payload.indexInFrame]) scrollIntoView(state.matches[payload.indexInFrame]);
+      if (payload.scroll !== false && state.matches[payload.indexInFrame]) {
+        scrollIntoView(state.matches[payload.indexInFrame]);
+      }
     } else {
       state.currentLocalIndex = -1;
       applyHighlights();
@@ -176,6 +179,19 @@
       state.regex = !!payload.opts.regex;
       state.findInSelection = false;
       state.selectionRange = null;
+      if (!isThisFrameVisible()) {
+        state.matches = [];
+        state.currentLocalIndex = -1;
+        clearHighlights();
+        replyToTop({
+          cmd: "count",
+          nonce: payload.nonce,
+          count: 0,
+          orderTop: Infinity,
+          orderLeft: Infinity,
+        });
+        return;
+      }
       runLocalSearch();
       const order = getFrameOrderFromMatches(state.matches);
       replyToTop({
@@ -203,8 +219,11 @@
   function handleSubframeReply(payload, fromFrameId) {
     if (payload.cmd !== "count" && payload.cmd !== "count-update") return;
     if (payload.cmd === "count" && payload.nonce !== state.searchNonce) return;
+    if (payload.cmd === "count-update") {
+      if (!state.open || !state.query) return;
+      if (!state.frameCounts.has(fromFrameId)) return;
+    }
 
-    const prevGlobal = state.currentGlobalIdx;
     state.frameCounts.set(fromFrameId, payload.count);
     storeFrameOrder(fromFrameId, payload.orderTop, payload.orderLeft);
 
@@ -219,8 +238,10 @@
     if (total === 0) {
       state.currentGlobalIdx = -1;
       state.currentFrameId = -1;
-    } else if (prevGlobal >= 0) {
-      setCurrentGlobal(Math.min(prevGlobal, total - 1));
+    } else if (state.currentGlobalIdx >= total) {
+      setCurrentGlobal(total - 1, { scroll: false });
+    } else if (state.currentGlobalIdx < 0) {
+      setCurrentGlobal(0, { scroll: false });
     }
     updateCounter();
   }
@@ -337,6 +358,7 @@
   function onPanelKeydown(e) {
     if (e.target === ui.findInput && e.key === "Enter") {
       e.preventDefault();
+      if (e.repeat) return;
       navigate(e.shiftKey ? -1 : 1);
       return;
     }
@@ -366,6 +388,25 @@
     if (!onDocumentKeydownRef) return;
     document.removeEventListener("keydown", onDocumentKeydownRef, true);
     onDocumentKeydownRef = null;
+  }
+
+  function attachDocumentWheel() {
+    if (onDocumentWheelRef) return;
+    onDocumentWheelRef = (e) => {
+      if (!state.open || !ui) return;
+      if (e.defaultPrevented || e.ctrlKey) return;
+      if (document.activeElement !== ui.findInput) return;
+      const target = e.target;
+      if (!(target instanceof Element) || !target.closest(`#${PANEL_ID}`)) return;
+      window.scrollBy({ top: e.deltaY, left: e.deltaX, behavior: "auto" });
+    };
+    document.addEventListener("wheel", onDocumentWheelRef, { passive: true, capture: true });
+  }
+
+  function detachDocumentWheel() {
+    if (!onDocumentWheelRef) return;
+    document.removeEventListener("wheel", onDocumentWheelRef, true);
+    onDocumentWheelRef = null;
   }
 
   function toggle(key) {
@@ -429,6 +470,7 @@
     state.open = true;
     ui.panel.classList.add("open");
     attachDocumentKeydown();
+    attachDocumentWheel();
     startMutationObserver();
 
     if (!supportsHighlights && !state.warnedNoHighlights) {
@@ -458,6 +500,7 @@
   function closePanel() {
     state.open = false;
     detachDocumentKeydown();
+    detachDocumentWheel();
     clearTimeout(searchInputTimer);
     if (ui) {
       ui.panel.classList.remove("open");
@@ -548,16 +591,16 @@
       return;
     }
 
-    if (preserve >= 0 && preserve < total) {
-      setCurrentGlobal(preserve);
+    if (preserve >= 0 && preserve < total && preserve !== state.currentGlobalIdx) {
+      setCurrentGlobal(preserve, { scroll: false });
     } else if (state.currentGlobalIdx < 0 || state.currentGlobalIdx >= total) {
       setCurrentGlobal(0);
     } else {
-      setCurrentGlobal(state.currentGlobalIdx);
+      updateCounter();
     }
   }
 
-  function setCurrentGlobal(globalIdx) {
+  function setCurrentGlobal(globalIdx, opts = {}) {
     let acc = 0;
     let targetFrame = -1;
     let localIdx = -1;
@@ -577,17 +620,25 @@
     if (targetFrame === 0) {
       state.currentLocalIndex = localIdx;
       applyHighlights();
-      if (state.matches[localIdx]) scrollIntoView(state.matches[localIdx]);
+      if (opts.scroll !== false && state.matches[localIdx]) scrollIntoView(state.matches[localIdx]);
     } else {
       state.currentLocalIndex = -1;
       applyHighlights();
     }
-    broadcast({ cmd: "set-current", frameId: targetFrame, indexInFrame: localIdx });
+    broadcast({
+      cmd: "set-current",
+      frameId: targetFrame,
+      indexInFrame: localIdx,
+      scroll: opts.scroll !== false,
+    });
     updateCounter();
   }
 
   function navigate(dir) {
     if (state.totalGlobal === 0) return;
+    clearTimeout(state.aggregateTimer);
+    state.aggregateTimer = null;
+    state.preserveGlobalIdx = -1;
     const next = (state.currentGlobalIdx + dir + state.totalGlobal) % state.totalGlobal;
     setCurrentGlobal(next);
   }
@@ -662,6 +713,19 @@
     return clientRectInTopViewport(rect);
   }
 
+  function isThisFrameVisible() {
+    if (IS_TOP) return true;
+    try {
+      const fe = window.frameElement;
+      if (!fe) return true;
+      if (!isVisible(fe)) return false;
+      const rect = fe.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    } catch {
+      return false;
+    }
+  }
+
   function isVisible(el) {
     if (!el || !el.isConnected) return false;
     const cached = visibilityCache.get(el);
@@ -715,10 +779,6 @@
     if (base) {
       roots.add(base);
       if (base.nodeType === 1) collectShadowRoots(base, roots);
-    }
-    if (!scopeRange && document.body) {
-      roots.add(document.body);
-      collectShadowRoots(document.body, roots);
     }
     return [...roots];
   }
@@ -1075,6 +1135,14 @@
 
   function handleMutationRefresh() {
     if (!state.query) return;
+    if (!isThisFrameVisible()) {
+      if (!IS_TOP) {
+        state.matches = [];
+        state.currentLocalIndex = -1;
+        clearHighlights();
+      }
+      return;
+    }
     if (IS_TOP && state.open) {
       runDistributedSearch({ preservePosition: true });
       return;
@@ -1088,9 +1156,6 @@
         orderTop: order.top,
         orderLeft: order.left,
       });
-      if (state.currentLocalIndex >= 0 && state.matches[state.currentLocalIndex]) {
-        scrollIntoView(state.matches[state.currentLocalIndex]);
-      }
     }
   }
 
