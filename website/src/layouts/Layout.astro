@@ -5,12 +5,58 @@ import { site } from "../config";
 interface Props {
   title?: string;
   description?: string;
+  image?: string;
+  noindex?: boolean;
 }
 
 const {
   title = "SuperSearch",
-  description = "VS Code-style find for Chrome. Regex, whole word, match case, find in selection, cross-iframe search.",
+  description = site.description,
+  image = site.ogImage,
+  noindex = false,
 } = Astro.props;
+
+// Absolute URLs (Astro.site comes from astro.config.mjs). Falls back to the
+// configured siteUrl when Astro.site is undefined (e.g. some dev contexts).
+const base = Astro.site ?? new URL(site.siteUrl);
+const canonical = new URL(Astro.url.pathname, base).href;
+const ogImageUrl = new URL(image, base).href;
+
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "SoftwareApplication",
+      name: site.name,
+      operatingSystem: "Chrome, Windows, macOS, Linux, ChromeOS",
+      applicationCategory: "BrowserApplication",
+      description: site.description,
+      url: base.href,
+      image: ogImageUrl,
+      screenshot: ogImageUrl,
+      softwareVersion: site.version,
+      downloadUrl: site.chromeStoreUrl,
+      installUrl: site.chromeStoreUrl,
+      browserRequirements: "Requires Google Chrome 105 or later.",
+      offers: {
+        "@type": "Offer",
+        price: "0",
+        priceCurrency: "USD",
+      },
+      author: {
+        "@type": "Person",
+        name: site.author,
+        url: site.authorUrl,
+      },
+    },
+    {
+      "@type": "WebSite",
+      name: site.name,
+      url: base.href,
+      description: site.description,
+    },
+  ],
+};
 ---
 
 <!doctype html>
@@ -18,13 +64,45 @@ const {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>{title}</title>
     <meta name="description" content={description} />
-    <link rel="canonical" href={site.siteUrl} />
-    <meta property="og:url" content={site.siteUrl} />
+    <meta name="keywords" content={site.keywords.join(", ")} />
+    <meta name="author" content={site.author} />
+    <meta
+      name="robots"
+      content={noindex ? "noindex, nofollow" : "index, follow, max-image-preview:large"}
+    />
+    <link rel="canonical" href={canonical} />
+    <meta name="theme-color" content="#fafafa" />
+
+    <!-- Icons -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <link rel="alternate icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/icon.png" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content={site.name} />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
-    <link rel="icon" type="image/png" href="/icon.png" />
-    <title>{title}</title>
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogImageUrl} />
+    <meta property="og:image:width" content="1280" />
+    <meta property="og:image:height" content="800" />
+    <meta property="og:image:alt" content={site.ogImageAlt} />
+    <meta property="og:locale" content="en_US" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImageUrl} />
+    <meta name="twitter:image:alt" content={site.ogImageAlt} />
+
+    <!-- Structured data -->
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} is:inline />
   </head>
   <body>
     <slot />
