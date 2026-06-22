@@ -31,6 +31,8 @@ npm install
 npm run build
 ```
 
+For the landing page: `npm install --prefix website`.
+
 Then open `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, and select the `dist/supersearch` folder.
 
 ## Development
@@ -41,10 +43,13 @@ Then open `chrome://extensions`, enable **Developer mode**, click **Load unpacke
 | `npm run build:ext` | Compile to `dist/supersearch` only |
 | `npm run typecheck` | Run `tsc` without emitting files |
 | `npm run launch` | Launch Chrome with the built extension (Playwright) |
+| `npm run dev:website` | Astro dev server for the landing page |
+| `npm run build:website` | Build the landing page to `website/dist/` |
+| `npm run preview:website` | Preview the built landing page |
 
 Edit files under `src/`, then rebuild and reload the extension on `chrome://extensions`.
 
-The landing page lives in `website/` (Astro). See `website/README.md` for that setup.
+The landing page lives in `website/` (Astro). See [website/README.md](website/README.md).
 
 ## Shortcuts
 

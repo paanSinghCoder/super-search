@@ -5,4 +5,5 @@ website/node_modules/
 website/dist/
 .playwright-chrome-profile/
 dist/
+*.zip
 *.log
