@@ -3,6 +3,7 @@
   "name": "SuperSearch - VS Code Find for Chrome",
   "version": "1.1.0",
   "description": "VS Code-style find overlay with regex, whole word, match case, find-in-selection, and cross-iframe search.",
+  "homepage_url": "https://super-search-gamma.vercel.app",
   "permissions": ["storage"],
   "host_permissions": ["<all_urls>"],
   "background": {

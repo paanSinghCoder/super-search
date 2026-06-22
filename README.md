@@ -2,7 +2,7 @@
 
 VS Code-style find for Chrome. Regex, whole word, match case, find-in-selection, and cross-iframe search on any page.
 
-[Install from Chrome Web Store](https://chromewebstore.google.com/detail/supersearch-vs-code-find/afnekfeaaamnbohoejlkbhnfefngahdh)
+[Install from Chrome Web Store](https://chromewebstore.google.com/detail/supersearch-vs-code-find/afnekfeaaamnbohoejlkbhnfefngahdh) · [Website](https://super-search-gamma.vercel.app) · [GitHub](https://github.com/paanSinghCoder/super-search)
 
 ## Features
 
@@ -25,8 +25,8 @@ Install [SuperSearch from the Chrome Web Store](https://chromewebstore.google.co
 Requires Node.js 18+.
 
 ```bash
-git clone https://github.com/paanSinghCoder/SuperSearch.git
-cd SuperSearch
+git clone https://github.com/paanSinghCoder/super-search.git
+cd super-search
 npm install
 npm run build
 ```

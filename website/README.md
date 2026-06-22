@@ -1,6 +1,8 @@
 # SuperSearch website
 
-Astro landing page for the [SuperSearch](https://github.com/paanSinghCoder/SuperSearch) Chrome extension.
+Astro landing page for the [SuperSearch](https://github.com/paanSinghCoder/super-search) Chrome extension.
+
+**Live site:** [super-search-gamma.vercel.app](https://super-search-gamma.vercel.app)
 
 ## Setup
 
@@ -24,4 +26,4 @@ Or from `website/` directly: `npm run dev`, `npm run build`, `npm run preview`.
 
 ## Environment
 
-Copy `website/.env.example` to `website/.env` if you need to override the Chrome Web Store URL (`PUBLIC_CHROME_STORE_URL`).
+Copy `website/.env.example` to `website/.env` to override `PUBLIC_SITE_URL`, `PUBLIC_GITHUB_URL`, or `PUBLIC_CHROME_STORE_URL`.

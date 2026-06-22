@@ -1,5 +1,6 @@
 ---
 import "../styles/global.css";
+import { site } from "../config";
 
 interface Props {
   title?: string;
@@ -18,6 +19,10 @@ const {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content={description} />
+    <link rel="canonical" href={site.siteUrl} />
+    <meta property="og:url" content={site.siteUrl} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
     <link rel="icon" type="image/png" href="/icon.png" />
     <title>{title}</title>
   </head>
