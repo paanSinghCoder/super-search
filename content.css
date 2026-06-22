@@ -13,6 +13,30 @@
   color: inherit;
 }
 
+/* Overlay fallback when CSS Custom Highlight API is unavailable */
+#super-search-overlay-root {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2147483646;
+}
+#super-search-overlay-root > div {
+  position: fixed;
+  pointer-events: none;
+  border-radius: 1px;
+}
+.ss-overlay-match {
+  background-color: #ffe066;
+  opacity: 0.9;
+}
+.ss-overlay-current {
+  background-color: #ff8a3d;
+  opacity: 0.95;
+}
+.ss-overlay-scope {
+  background-color: rgba(64, 169, 255, 0.18);
+}
+
 /* Outline matches inside <input>/<textarea> — Highlight API can't reach those */
 .ss-field-match {
   box-shadow: 0 0 0 2px #ffe066 !important;
@@ -267,7 +291,7 @@
   fill: currentColor;
 }
 
-/* Notification — plain text below the panel rows, auto-hides after 3s */
+/* Notification — plain text below the panel rows, auto-hides after 2s */
 .ss-notification {
   display: flex;
   align-items: center;

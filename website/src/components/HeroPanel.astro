@@ -1,0 +1,115 @@
+---
+/** Interactive demo of the SuperSearch find panel (visual only, no search). */
+---
+
+<div class="hero-panel-stage" data-hero-panel>
+  <div class="hero-page-context" data-hero-page aria-hidden="true">
+    <p>
+      The <mark data-hero-match>function</mark> handles routing. Each
+      <mark data-hero-match>function</mark> in the module exports cleanly.
+    </p>
+  </div>
+
+  <div class="hero-panel" data-hero-panel-ui>
+    <div class="hp-row">
+      <div class="hp-input-wrap">
+        <input
+          class="hp-input"
+          type="text"
+          value=""
+          spellcheck="false"
+          autocomplete="off"
+          aria-label="Find"
+          data-hero-input
+        />
+        <span class="hp-counter" data-hero-counter>0/0</span>
+        <button class="hp-clear" type="button" title="Clear" aria-label="Clear find" data-hero-clear hidden>
+          <svg viewBox="0 0 16 16"><path d="M4.7 3.3l3.3 3.3 3.3-3.3 1.4 1.4L9.4 8l3.3 3.3-1.4 1.4L8 9.4l-3.3 3.3-1.4-1.4L6.6 8 3.3 4.7z"/></svg>
+        </button>
+      </div>
+      <div class="hp-toggles">
+        <button class="hp-toggle active" type="button" title="Match Case" aria-pressed="true" data-hero-toggle>Aa</button>
+        <button class="hp-toggle hp-toggle-ww" type="button" title="Whole Word" aria-pressed="false" data-hero-toggle>ab</button>
+        <button class="hp-toggle active hp-toggle-regex" type="button" title="Regex" aria-pressed="true" data-hero-toggle>.*</button>
+        <button class="hp-toggle hp-toggle-sel" type="button" title="Find in Selection" aria-pressed="false" data-hero-toggle>
+          <svg viewBox="0 0 16 16"><path d="M2 3h5v1H3v9h4v1H2V3zm12 11H9v-1h4V4H9V3h5v11z"/></svg>
+        </button>
+      </div>
+      <button class="hp-btn" type="button" title="Previous match" aria-label="Previous match" data-hero-prev>
+        <svg viewBox="0 0 16 16"><path d="M8 5.5l-4.5 4.5 1 1L8 7.5l3.5 3.5 1-1z"/></svg>
+      </button>
+      <button class="hp-btn" type="button" title="Next match" aria-label="Next match" data-hero-next>
+        <svg viewBox="0 0 16 16"><path d="M8 10.5l-4.5-4.5 1-1L8 8.5l3.5-3.5 1 1z"/></svg>
+      </button>
+      <button class="hp-btn" type="button" title="Close" aria-label="Close find">
+        <svg viewBox="0 0 16 16"><path d="M4.7 3.3l3.3 3.3 3.3-3.3 1.4 1.4L9.4 8l3.3 3.3-1.4 1.4L8 9.4l-3.3 3.3-1.4-1.4L6.6 8 3.3 4.7z"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+  function initHeroPanel(root) {
+    const input = root.querySelector("[data-hero-input]");
+    const counter = root.querySelector("[data-hero-counter]");
+    const clearBtn = root.querySelector("[data-hero-clear]");
+    const matches = [...root.querySelectorAll("[data-hero-match]")];
+    const toggles = [...root.querySelectorAll("[data-hero-toggle]")];
+
+    const TOTAL = 12;
+    let current = 0;
+
+    function syncCounter() {
+      const hasQuery = input.value.length > 0;
+      counter.textContent = hasQuery ? `${current}/${TOTAL}` : "0/0";
+      counter.classList.toggle("is-empty", !hasQuery);
+      clearBtn.hidden = !hasQuery;
+    }
+
+    function syncMatchHighlight() {
+      const hasQuery = input.value.length > 0;
+      const activeIdx = hasQuery ? (current - 1) % matches.length : -1;
+      matches.forEach((el, i) => {
+        el.classList.toggle("is-current", i === activeIdx);
+        el.hidden = !hasQuery;
+      });
+    }
+
+    function go(dir) {
+      if (!input.value.length) return;
+      current = ((current - 1 + dir + TOTAL) % TOTAL) + 1;
+      syncCounter();
+      syncMatchHighlight();
+    }
+
+    input.addEventListener("input", () => {
+      if (!input.value.length) current = 0;
+      else if (current < 1) current = 1;
+      syncCounter();
+      syncMatchHighlight();
+    });
+
+    clearBtn.addEventListener("click", () => {
+      input.value = "";
+      current = 0;
+      syncCounter();
+      syncMatchHighlight();
+      input.focus();
+    });
+
+    toggles.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const on = btn.classList.toggle("active");
+        btn.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+    });
+
+    root.querySelector("[data-hero-prev]")?.addEventListener("click", () => go(-1));
+    root.querySelector("[data-hero-next]")?.addEventListener("click", () => go(1));
+
+    syncCounter();
+    syncMatchHighlight();
+  }
+
+  document.querySelectorAll("[data-hero-panel]").forEach(initHeroPanel);
+</script>

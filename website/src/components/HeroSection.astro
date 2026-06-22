@@ -1,0 +1,21 @@
+---
+import { site } from "../config";
+import HeroPanel from "./HeroPanel.astro";
+---
+
+<section class="hero">
+  <div class="hero-content">
+    <img class="hero-icon" src="/icon.png" width="48" height="48" alt="" />
+    <h1>VS Code find,<br />in Chrome.</h1>
+    <p class="hero-lead">
+      Regex, whole word, match case, find-in-selection, and cross-iframe search.
+      Opens with Cmd+F.
+    </p>
+    <a class="btn btn-lg" href={site.chromeStoreUrl} target="_blank" rel="noopener noreferrer">Add to Chrome</a>
+    <p class="hero-meta">Free · v{site.version}</p>
+  </div>
+
+  <div class="hero-media">
+    <HeroPanel />
+  </div>
+</section>

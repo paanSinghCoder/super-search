@@ -1,4 +1,8 @@
 .claude/
 .DS_Store
 node_modules/
+website/node_modules/
+website/dist/
+.playwright-chrome-profile/
+dist/
 *.log

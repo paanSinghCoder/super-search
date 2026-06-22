@@ -3,19 +3,22 @@
   window.__superSearchInjected = true;
 
   const PANEL_ID = "super-search-panel";
+  const HL_OVERLAY_ID = "super-search-overlay-root";
   const HL_ALL = "super-search-match";
   const HL_CUR = "super-search-current";
   const HL_SCOPE = "super-search-scope";
   const IS_TOP = window === window.top;
+  const supportsHighlights = typeof CSS !== "undefined" && !!CSS.highlights;
 
   const TIMINGS = {
-    AGGREGATE_FALLBACK: 300,   // wait this long for cross-frame search replies before finalizing
-    AGGREGATE_REPLY: 50,       // reset window after each subframe reply
-    MUTATION_DEBOUNCE: 250,    // re-search debounce after DOM mutations
-    NOTIFICATION_HIDE: 2000,   // notification auto-hide
+    AGGREGATE_FALLBACK: 300,
+    AGGREGATE_REPLY: 50,
+    MUTATION_DEBOUNCE: 250,
+    SEARCH_DEBOUNCE: 80,
+    NOTIFICATION_HIDE: 2000,
+    OVERLAY_REFRESH: 16,
   };
 
-  // ---------- shared state ----------
   const state = {
     matchCase: false,
     wholeWord: false,
@@ -25,30 +28,33 @@
     savedSelectionRange: null,
 
     query: "",
-    // Each match is one of:
-    //   { type: "range", range: Range }                       — page DOM text / contenteditable
-    //   { type: "field", element, start, end, anchorRange }   — input / textarea value
     matches: [],
     currentLocalIndex: -1,
     fieldMatchEls: new Set(),
 
-    // top-frame-only
     open: false,
     overrideNativeFind: true,
     myFrameId: IS_TOP ? 0 : -1,
     frameCounts: new Map(),
+    frameOrder: new Map(),
     totalGlobal: 0,
     currentGlobalIdx: -1,
     currentFrameId: -1,
     searchNonce: 0,
     aggregateTimer: null,
+    preserveGlobalIdx: -1,
+    warnedNoHighlights: false,
   };
 
   let ui = null;
-  // Cleared at the start of each search; built up lazily by isVisible().
   let visibilityCache = new WeakMap();
+  let overlayRoot = null;
+  let overlayScrollHandler = null;
+  let overlayRefreshTimer = null;
+  let pendingSetCurrent = null;
+  let searchInputTimer = null;
+  let onDocumentKeydownRef = null;
 
-  // ---------- preferences ----------
   const PREF_KEYS = ["matchCase", "wholeWord", "regex", "overrideNativeFind"];
   chrome.storage?.local.get(PREF_KEYS, (prefs) => {
     if (!prefs) return;
@@ -76,43 +82,41 @@
     });
   }
 
-  // ---------- discover own frameId ----------
   if (!IS_TOP) {
     try {
       chrome.runtime.sendMessage({ type: "ss-whoami" }, (reply) => {
         if (chrome.runtime.lastError) return;
-        state.myFrameId = reply?.frameId ?? 0;
+        if (typeof reply?.frameId !== "number") return;
+        state.myFrameId = reply.frameId;
+        if (pendingSetCurrent) {
+          applySetCurrent(pendingSetCurrent);
+          pendingSetCurrent = null;
+        }
       });
     } catch {}
   }
 
-  // ---------- single onMessage listener (all frames) ----------
   chrome.runtime.onMessage.addListener((msg) => {
     if (!msg) return;
-    // Top-frame command from background (toolbar click)
     if (IS_TOP && msg.type === "super-search" && msg.action === "open") {
       openPanel();
       return;
     }
-    // Broadcast from any frame
     if (msg.type === "ss-relay") {
-      if (IS_TOP && msg.fromFrameId === 0) return; // skip our own broadcast
+      if (IS_TOP && msg.fromFrameId === 0) return;
       handleBroadcast(msg.payload);
       return;
     }
-    // Subframe reply destined for the top frame
     if (msg.type === "ss-relay-from-frame" && IS_TOP) {
       handleSubframeReply(msg.payload, msg.fromFrameId);
     }
   });
 
-  // ---------- top-frame: native Cmd/Ctrl+F override + selection capture ----------
   if (IS_TOP) {
     window.addEventListener(
       "keydown",
       (e) => {
         if (!state.overrideNativeFind) return;
-        // Accept either modifier so we don't have to detect OS.
         const cmdKey = e.metaKey || e.ctrlKey;
         if (cmdKey && !e.shiftKey && !e.altKey && (e.key === "f" || e.key === "F")) {
           e.preventDefault();
@@ -123,9 +127,6 @@
       true
     );
 
-    // Capture the user's page selection so we still have it after focus moves
-    // into the panel. Selections inside the panel or while find-in-selection is
-    // active are ignored.
     document.addEventListener("selectionchange", () => {
       if (state.findInSelection) return;
       const sel = document.getSelection();
@@ -148,6 +149,25 @@
     chrome.runtime.sendMessage({ type: "ss-to-top", payload }).catch(() => {});
   }
 
+  function applySetCurrent(payload) {
+    if (payload.frameId === state.myFrameId) {
+      state.currentLocalIndex = payload.indexInFrame;
+      applyHighlights();
+      if (state.matches[payload.indexInFrame]) scrollIntoView(state.matches[payload.indexInFrame]);
+    } else {
+      state.currentLocalIndex = -1;
+      applyHighlights();
+    }
+  }
+
+  function handleSetCurrent(payload) {
+    if (state.myFrameId < 0) {
+      pendingSetCurrent = payload;
+      return;
+    }
+    applySetCurrent(payload);
+  }
+
   function handleBroadcast(payload) {
     if (payload.cmd === "search") {
       state.query = payload.query;
@@ -157,17 +177,16 @@
       state.findInSelection = false;
       state.selectionRange = null;
       runLocalSearch();
-      replyToTop({ cmd: "count", nonce: payload.nonce, count: state.matches.length });
+      const order = getFrameOrderFromMatches(state.matches);
+      replyToTop({
+        cmd: "count",
+        nonce: payload.nonce,
+        count: state.matches.length,
+        orderTop: order.top,
+        orderLeft: order.left,
+      });
     } else if (payload.cmd === "set-current") {
-      if (state.myFrameId < 0) return;
-      if (payload.frameId === state.myFrameId) {
-        state.currentLocalIndex = payload.indexInFrame;
-        applyHighlights();
-        if (state.matches[payload.indexInFrame]) scrollIntoView(state.matches[payload.indexInFrame]);
-      } else {
-        state.currentLocalIndex = -1;
-        applyHighlights();
-      }
+      handleSetCurrent(payload);
     } else if (payload.cmd === "clear") {
       state.query = "";
       state.matches = [];
@@ -176,16 +195,50 @@
     }
   }
 
-  function handleSubframeReply(payload, fromFrameId) {
-    if (payload.cmd === "count") {
-      if (payload.nonce !== state.searchNonce) return;
-      state.frameCounts.set(fromFrameId, payload.count);
-      clearTimeout(state.aggregateTimer);
-      state.aggregateTimer = setTimeout(() => finalizeSearch(payload.nonce), TIMINGS.AGGREGATE_REPLY);
-    }
+  function storeFrameOrder(frameId, orderTop, orderLeft) {
+    if (orderTop === undefined) return;
+    state.frameOrder.set(frameId, { top: orderTop, left: orderLeft });
   }
 
-  // ---------- panel UI (top frame only) ----------
+  function handleSubframeReply(payload, fromFrameId) {
+    if (payload.cmd !== "count" && payload.cmd !== "count-update") return;
+    if (payload.cmd === "count" && payload.nonce !== state.searchNonce) return;
+
+    const prevGlobal = state.currentGlobalIdx;
+    state.frameCounts.set(fromFrameId, payload.count);
+    storeFrameOrder(fromFrameId, payload.orderTop, payload.orderLeft);
+
+    if (payload.cmd === "count") {
+      clearTimeout(state.aggregateTimer);
+      state.aggregateTimer = setTimeout(() => finalizeSearch(payload.nonce), TIMINGS.AGGREGATE_REPLY);
+      return;
+    }
+
+    const total = sumFrameCounts();
+    state.totalGlobal = total;
+    if (total === 0) {
+      state.currentGlobalIdx = -1;
+      state.currentFrameId = -1;
+    } else if (prevGlobal >= 0) {
+      setCurrentGlobal(Math.min(prevGlobal, total - 1));
+    }
+    updateCounter();
+  }
+
+  function sumFrameCounts() {
+    return [...state.frameCounts.values()].reduce((a, b) => a + b, 0);
+  }
+
+  function sortedFrameIds() {
+    return [...state.frameCounts.keys()].sort((a, b) => {
+      const oa = state.frameOrder.get(a) ?? { top: a * 1e6, left: 0 };
+      const ob = state.frameOrder.get(b) ?? { top: b * 1e6, left: 0 };
+      if (oa.top !== ob.top) return oa.top - ob.top;
+      if (oa.left !== ob.left) return oa.left - ob.left;
+      return a - b;
+    });
+  }
+
   function buildUI() {
     if (ui || !IS_TOP) return ui;
     const panel = document.createElement("div");
@@ -194,27 +247,27 @@
     panel.innerHTML = `
       <div class="ss-row">
         <div class="ss-input-wrap" data-role="find-wrap">
-          <input class="ss-input" data-role="find" type="text" placeholder="Find" spellcheck="false" autocomplete="off"/>
-          <span class="ss-counter" data-role="counter"></span>
+          <input class="ss-input" data-role="find" type="text" placeholder="Find" spellcheck="false" autocomplete="off" aria-label="Find"/>
+          <span class="ss-counter" data-role="counter" aria-live="polite"></span>
           <button class="ss-clear-btn" data-action="clear-find" type="button" title="Clear" aria-label="Clear find">
             <svg viewBox="0 0 16 16"><path d="M4.7 3.3l3.3 3.3 3.3-3.3 1.4 1.4L9.4 8l3.3 3.3-1.4 1.4L8 9.4l-3.3 3.3-1.4-1.4L6.6 8 3.3 4.7z"/></svg>
           </button>
         </div>
         <div class="ss-toggles">
-          <button class="ss-toggle ss-toggle-case" data-toggle="matchCase" title="Match Case (Alt+C)">Aa</button>
-          <button class="ss-toggle ss-toggle-ww" data-toggle="wholeWord" title="Match Whole Word (Alt+W)">ab</button>
-          <button class="ss-toggle ss-toggle-regex" data-toggle="regex" title="Use Regular Expression (Alt+R)">.*</button>
-          <button class="ss-toggle ss-toggle-sel" data-toggle="findInSelection" title="Find in Selection (Alt+L)">
+          <button class="ss-toggle ss-toggle-case" data-toggle="matchCase" type="button" title="Match Case (Alt+C)" aria-pressed="false">Aa</button>
+          <button class="ss-toggle ss-toggle-ww" data-toggle="wholeWord" type="button" title="Match Whole Word (Alt+W)" aria-pressed="false">ab</button>
+          <button class="ss-toggle ss-toggle-regex" data-toggle="regex" type="button" title="Use Regular Expression (Alt+R)" aria-pressed="false">.*</button>
+          <button class="ss-toggle ss-toggle-sel" data-toggle="findInSelection" type="button" title="Find in Selection (Alt+L)" aria-pressed="false">
             <svg class="ss-icon" viewBox="0 0 16 16"><path d="M2 3h5v1H3v9h4v1H2V3zm12 11H9v-1h4V4H9V3h5v11z"/></svg>
           </button>
         </div>
-        <button class="ss-btn" data-action="prev" title="Previous Match (Shift+Enter)">
+        <button class="ss-btn" data-action="prev" type="button" title="Previous Match (Shift+Enter)" aria-label="Previous match">
           <svg class="ss-icon" viewBox="0 0 16 16"><path d="M8 5.5l-4.5 4.5 1 1L8 7.5l3.5 3.5 1-1z"/></svg>
         </button>
-        <button class="ss-btn" data-action="next" title="Next Match (Enter)">
+        <button class="ss-btn" data-action="next" type="button" title="Next Match (Enter)" aria-label="Next match">
           <svg class="ss-icon" viewBox="0 0 16 16"><path d="M8 10.5l-4.5-4.5 1-1L8 8.5l3.5-3.5 1 1z"/></svg>
         </button>
-        <button class="ss-btn" data-action="close" title="Close (Escape)">
+        <button class="ss-btn" data-action="close" type="button" title="Close (Escape)" aria-label="Close find">
           <svg class="ss-icon" viewBox="0 0 16 16"><path d="M4.7 3.3l3.3 3.3 3.3-3.3 1.4 1.4L9.4 8l3.3 3.3-1.4 1.4L8 9.4l-3.3 3.3-1.4-1.4L6.6 8 3.3 4.7z"/></svg>
         </button>
       </div>
@@ -229,7 +282,8 @@
 
     findInput.addEventListener("input", () => {
       state.query = findInput.value;
-      runDistributedSearch();
+      clearTimeout(searchInputTimer);
+      searchInputTimer = setTimeout(() => runDistributedSearch(), TIMINGS.SEARCH_DEBOUNCE);
     });
 
     panel.addEventListener("click", (e) => {
@@ -241,6 +295,7 @@
       else if (act === "next") navigate(1);
       else if (act === "prev") navigate(-1);
       else if (act === "clear-find") {
+        clearTimeout(searchInputTimer);
         ui.findInput.value = "";
         state.query = "";
         runDistributedSearch();
@@ -258,7 +313,6 @@
       findWrap: panel.querySelector('[data-role="find-wrap"]'),
       notification: panel.querySelector('[data-role="notification"]'),
       notificationText: panel.querySelector('[data-role="notification-text"]'),
-      // Cached toggle elements so syncToggleUI doesn't requery on every change.
       toggles: {
         matchCase: panel.querySelector(".ss-toggle-case"),
         wholeWord: panel.querySelector(".ss-toggle-ww"),
@@ -274,16 +328,13 @@
   function syncToggleUI() {
     if (!ui) return;
     for (const [key, el] of Object.entries(ui.toggles)) {
-      el?.classList.toggle("active", !!state[key]);
+      const on = !!state[key];
+      el?.classList.toggle("active", on);
+      el?.setAttribute("aria-pressed", on ? "true" : "false");
     }
   }
 
   function onPanelKeydown(e) {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      closePanel();
-      return;
-    }
     if (e.target === ui.findInput && e.key === "Enter") {
       e.preventDefault();
       navigate(e.shiftKey ? -1 : 1);
@@ -296,6 +347,25 @@
       if (k === "r") { e.preventDefault(); toggle("regex"); return; }
       if (k === "l") { e.preventDefault(); toggle("findInSelection"); return; }
     }
+  }
+
+  function attachDocumentKeydown() {
+    if (onDocumentKeydownRef) return;
+    onDocumentKeydownRef = (e) => {
+      if (!state.open) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        closePanel();
+      }
+    };
+    document.addEventListener("keydown", onDocumentKeydownRef, true);
+  }
+
+  function detachDocumentKeydown() {
+    if (!onDocumentKeydownRef) return;
+    document.removeEventListener("keydown", onDocumentKeydownRef, true);
+    onDocumentKeydownRef = null;
   }
 
   function toggle(key) {
@@ -317,6 +387,7 @@
       persistTogglePrefs();
     }
     syncToggleUI();
+    clearTimeout(searchInputTimer);
     runDistributedSearch();
   }
 
@@ -343,14 +414,12 @@
     if (!IS_TOP) return;
     buildUI();
 
-    // Already open: just refocus, don't re-seed from selection.
     if (state.open) {
       ui.findInput.focus();
       ui.findInput.select();
       return;
     }
 
-    // Capture selection before focusing the input.
     const sel = document.getSelection();
     const selStr = sel?.toString() ?? "";
     if (sel && !sel.isCollapsed && sel.rangeCount > 0) {
@@ -359,7 +428,13 @@
 
     state.open = true;
     ui.panel.classList.add("open");
+    attachDocumentKeydown();
     startMutationObserver();
+
+    if (!supportsHighlights && !state.warnedNoHighlights) {
+      state.warnedNoHighlights = true;
+      showNotification("Using overlay highlights (Highlight API unavailable)");
+    }
 
     if (selStr.trim()) {
       if (selStr.includes("\n")) {
@@ -382,6 +457,8 @@
 
   function closePanel() {
     state.open = false;
+    detachDocumentKeydown();
+    clearTimeout(searchInputTimer);
     if (ui) {
       ui.panel.classList.remove("open");
       ui.notification.classList.remove("visible");
@@ -392,6 +469,7 @@
     state.totalGlobal = 0;
     state.currentGlobalIdx = -1;
     state.frameCounts.clear();
+    state.frameOrder.clear();
     clearHighlights();
     if (state.findInSelection) {
       state.findInSelection = false;
@@ -402,13 +480,13 @@
     stopMutationObserver();
   }
 
-  // ---------- distributed search orchestration (top frame only) ----------
-  function runDistributedSearch() {
+  function runDistributedSearch(opts = {}) {
     if (!IS_TOP) return;
 
     clearTimeout(state.aggregateTimer);
     state.searchNonce++;
     const nonce = state.searchNonce;
+    state.preserveGlobalIdx = opts.preservePosition ? state.currentGlobalIdx : -1;
 
     if (!state.query) {
       state.matches = [];
@@ -416,16 +494,18 @@
       state.totalGlobal = 0;
       state.currentGlobalIdx = -1;
       state.frameCounts.clear();
-      // applyHighlights wipes match highlights but keeps the scope tint.
+      state.frameOrder.clear();
       applyHighlights();
       broadcast({ cmd: "clear" });
       updateCounter();
       return;
     }
 
-    runLocalSearch();
+    runLocalSearch({ preserveLocalIndex: opts.preservePosition });
     state.frameCounts = new Map();
+    state.frameOrder = new Map();
     state.frameCounts.set(0, state.matches.length);
+    state.frameOrder.set(0, getFrameOrderFromMatches(state.matches));
 
     broadcast({
       cmd: "search",
@@ -436,38 +516,44 @@
 
     state.aggregateTimer = setTimeout(() => finalizeSearch(nonce), TIMINGS.AGGREGATE_FALLBACK);
 
-    if (state.matches.length) {
-      state.currentLocalIndex = 0;
-      applyHighlights();
-      scrollIntoView(state.matches[0]);
-      state.currentGlobalIdx = 0;
-      state.currentFrameId = 0;
-    } else {
-      state.currentLocalIndex = -1;
-      applyHighlights();
-      state.currentGlobalIdx = -1;
-      state.currentFrameId = -1;
+    if (!opts.preservePosition) {
+      if (state.matches.length) {
+        state.currentLocalIndex = 0;
+        applyHighlights();
+        scrollIntoView(state.matches[0]);
+        state.currentGlobalIdx = 0;
+        state.currentFrameId = 0;
+      } else {
+        state.currentLocalIndex = -1;
+        applyHighlights();
+        state.currentGlobalIdx = -1;
+        state.currentFrameId = -1;
+      }
+      state.totalGlobal = state.matches.length;
+      updateCounter();
     }
-    state.totalGlobal = state.matches.length;
-    updateCounter();
   }
 
   function finalizeSearch(nonce) {
     if (nonce !== state.searchNonce) return;
-    const total = [...state.frameCounts.values()].reduce((a, b) => a + b, 0);
+    const total = sumFrameCounts();
     state.totalGlobal = total;
+    const preserve = state.preserveGlobalIdx;
+    state.preserveGlobalIdx = -1;
+
     if (total === 0) {
       state.currentGlobalIdx = -1;
       state.currentFrameId = -1;
       updateCounter();
       return;
     }
-    if (state.currentGlobalIdx < 0) {
-      setCurrentGlobal(0);
-    } else if (state.currentGlobalIdx >= total) {
+
+    if (preserve >= 0 && preserve < total) {
+      setCurrentGlobal(preserve);
+    } else if (state.currentGlobalIdx < 0 || state.currentGlobalIdx >= total) {
       setCurrentGlobal(0);
     } else {
-      updateCounter();
+      setCurrentGlobal(state.currentGlobalIdx);
     }
   }
 
@@ -475,7 +561,7 @@
     let acc = 0;
     let targetFrame = -1;
     let localIdx = -1;
-    for (const fid of [...state.frameCounts.keys()].sort((a, b) => a - b)) {
+    for (const fid of sortedFrameIds()) {
       const count = state.frameCounts.get(fid);
       if (globalIdx < acc + count) {
         targetFrame = fid;
@@ -533,30 +619,108 @@
     }, TIMINGS.NOTIFICATION_HIDE);
   }
 
-  // ---------- visibility check (memoized per search) ----------
+  function clientRectInTopViewport(rect) {
+    let top = rect.top;
+    let left = rect.left;
+    let w = window;
+    while (w !== w.top) {
+      const fe = w.frameElement;
+      if (!fe) break;
+      const r = fe.getBoundingClientRect();
+      top += r.top;
+      left += r.left;
+      w = w.parent;
+    }
+    return { top, left };
+  }
+
+  function getFrameElementOrder() {
+    if (IS_TOP) return { top: 0, left: 0 };
+    let top = 0;
+    let left = 0;
+    let w = window;
+    while (w !== w.top) {
+      const fe = w.frameElement;
+      if (!fe) return { top: Infinity, left: Infinity };
+      const r = fe.getBoundingClientRect();
+      top += r.top;
+      left += r.left;
+      w = w.parent;
+    }
+    return { top, left };
+  }
+
+  function getFrameOrderFromMatches(matches) {
+    if (!matches.length) return getFrameElementOrder();
+    const m = matches[0];
+    let rect;
+    try {
+      rect = m.type === "range" ? m.range.getBoundingClientRect() : m.element.getBoundingClientRect();
+    } catch {
+      return getFrameElementOrder();
+    }
+    return clientRectInTopViewport(rect);
+  }
+
   function isVisible(el) {
     if (!el || !el.isConnected) return false;
     const cached = visibilityCache.get(el);
     if (cached !== undefined) return cached;
 
-    let visible;
-    if (el.closest(`#${PANEL_ID}`)) {
+    let visible = true;
+    if (el.closest(`#${PANEL_ID}, #${HL_OVERLAY_ID}`)) {
       visible = false;
-    } else if (el.offsetParent !== null) {
-      // Has an offset parent — almost always visible. Skip the expensive
-      // getComputedStyle call.
-      visible = true;
     } else {
-      // offsetParent is null for position:fixed, display:none, or hidden.
-      // Distinguish via computed style.
-      const cs = el.ownerDocument.defaultView?.getComputedStyle(el);
-      if (!cs) visible = false;
-      else if (cs.display === "none" || cs.visibility === "hidden") visible = false;
-      else if (cs.position === "fixed") visible = true;
-      else visible = false;
+      let node = el;
+      while (node && node.nodeType === 1) {
+        if (node.getAttribute("aria-hidden") === "true") {
+          visible = false;
+          break;
+        }
+        const cs = node.ownerDocument?.defaultView?.getComputedStyle(node);
+        if (cs) {
+          if (cs.display === "none" || cs.visibility === "hidden") {
+            visible = false;
+            break;
+          }
+          if (parseFloat(cs.opacity) === 0) {
+            visible = false;
+            break;
+          }
+        }
+        node = node.parentElement;
+      }
     }
+
     visibilityCache.set(el, visible);
     return visible;
+  }
+
+  function collectShadowRoots(root, roots) {
+    if (!root || root.nodeType !== 1) return;
+    if (root.shadowRoot) {
+      roots.add(root.shadowRoot);
+      for (const child of root.shadowRoot.children) collectShadowRoots(child, roots);
+    }
+    for (const child of root.children) collectShadowRoots(child, roots);
+  }
+
+  function collectSearchRoots(scopeRange) {
+    const roots = new Set();
+    const base = scopeRange
+      ? (scopeRange.commonAncestorContainer.nodeType === 1
+          ? scopeRange.commonAncestorContainer
+          : scopeRange.commonAncestorContainer.parentElement)
+      : document.body;
+    if (base) {
+      roots.add(base);
+      if (base.nodeType === 1) collectShadowRoots(base, roots);
+    }
+    if (!scopeRange && document.body) {
+      roots.add(document.body);
+      collectShadowRoots(document.body, roots);
+    }
+    return [...roots];
   }
 
   function rangeIntersects(a, b) {
@@ -567,33 +731,32 @@
   }
 
   function collectTextNodes(scopeRange) {
-    const root = scopeRange ? scopeRange.commonAncestorContainer : document.body;
-    if (!root) return [];
-
     const nodes = [];
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-      acceptNode(n) {
-        const parent = n.parentElement;
-        if (!parent) return NodeFilter.FILTER_REJECT;
-        const tag = parent.tagName;
-        if (tag === "SCRIPT" || tag === "STYLE" || tag === "NOSCRIPT" || tag === "TEXTAREA") {
-          return NodeFilter.FILTER_REJECT;
-        }
-        if (parent.closest(`#${PANEL_ID}`)) return NodeFilter.FILTER_REJECT;
-        if (!isVisible(parent)) return NodeFilter.FILTER_REJECT;
-        if (!n.nodeValue) return NodeFilter.FILTER_REJECT;
-        return NodeFilter.FILTER_ACCEPT;
-      },
-    });
+    for (const root of collectSearchRoots(scopeRange)) {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+        acceptNode(n) {
+          const parent = n.parentElement;
+          if (!parent) return NodeFilter.FILTER_REJECT;
+          const tag = parent.tagName;
+          if (tag === "SCRIPT" || tag === "STYLE" || tag === "NOSCRIPT" || tag === "TEXTAREA") {
+            return NodeFilter.FILTER_REJECT;
+          }
+          if (parent.closest(`#${PANEL_ID}, #${HL_OVERLAY_ID}`)) return NodeFilter.FILTER_REJECT;
+          if (!isVisible(parent)) return NodeFilter.FILTER_REJECT;
+          if (!n.nodeValue) return NodeFilter.FILTER_REJECT;
+          return NodeFilter.FILTER_ACCEPT;
+        },
+      });
 
-    let n;
-    while ((n = walker.nextNode())) {
-      if (scopeRange) {
-        const r = document.createRange();
-        try { r.selectNode(n); } catch { continue; }
-        if (!rangeIntersects(r, scopeRange)) continue;
+      let n;
+      while ((n = walker.nextNode())) {
+        if (scopeRange) {
+          const r = document.createRange();
+          try { r.selectNode(n); } catch { continue; }
+          if (!rangeIntersects(r, scopeRange)) continue;
+        }
+        nodes.push(n);
       }
-      nodes.push(n);
     }
     return nodes;
   }
@@ -665,19 +828,32 @@
     return ranges;
   }
 
-  // input/textarea matches — skipped while find-in-selection is active.
   const SKIP_INPUT_TYPES = new Set([
     "password", "hidden", "checkbox", "radio", "submit", "reset",
     "button", "file", "image", "color", "range",
   ]);
 
+  function collectFields(scopeRange) {
+    const fields = [];
+    const seen = new Set();
+    for (const root of collectSearchRoots(scopeRange)) {
+      if (!root.querySelectorAll) continue;
+      for (const el of root.querySelectorAll("input, textarea")) {
+        if (!seen.has(el)) {
+          seen.add(el);
+          fields.push(el);
+        }
+      }
+    }
+    return fields;
+  }
+
   function findFieldMatchesWithRegex(regex) {
     if (state.findInSelection) return [];
     const out = [];
-    const fields = document.querySelectorAll("input, textarea");
-    for (const el of fields) {
+    for (const el of collectFields(null)) {
       if (el.tagName === "INPUT" && SKIP_INPUT_TYPES.has(el.type)) continue;
-      if (el.closest(`#${PANEL_ID}`)) continue;
+      if (el.closest(`#${PANEL_ID}, #${HL_OVERLAY_ID}`)) continue;
       if (!isVisible(el)) continue;
       const value = el.value;
       if (!value) continue;
@@ -688,7 +864,6 @@
           regex.lastIndex++;
           continue;
         }
-        // Cache the anchor range so sort doesn't re-create it for every comparison.
         let anchorRange = null;
         try {
           anchorRange = document.createRange();
@@ -706,12 +881,72 @@
     return out;
   }
 
+  function ensureOverlayRoot() {
+    if (overlayRoot?.isConnected) return overlayRoot;
+    overlayRoot = document.createElement("div");
+    overlayRoot.id = HL_OVERLAY_ID;
+    overlayRoot.setAttribute("data-super-search", "overlay");
+    document.documentElement.appendChild(overlayRoot);
+    return overlayRoot;
+  }
+
+  function clearOverlayHighlights() {
+    if (overlayRoot) overlayRoot.replaceChildren();
+    if (overlayScrollHandler) {
+      window.removeEventListener("scroll", overlayScrollHandler, true);
+      window.removeEventListener("resize", overlayScrollHandler);
+      overlayScrollHandler = null;
+    }
+    clearTimeout(overlayRefreshTimer);
+  }
+
+  function addOverlayRects(root, range, className) {
+    if (!range) return;
+    let rects;
+    try {
+      rects = range.getClientRects();
+    } catch {
+      return;
+    }
+    for (const rect of rects) {
+      if (rect.width === 0 && rect.height === 0) continue;
+      const div = document.createElement("div");
+      div.className = className;
+      div.style.top = `${rect.top}px`;
+      div.style.left = `${rect.left}px`;
+      div.style.width = `${rect.width}px`;
+      div.style.height = `${rect.height}px`;
+      root.appendChild(div);
+    }
+  }
+
+  function renderOverlayHighlights(allRanges, currentRange, scopeRange) {
+    clearOverlayHighlights();
+    if (!allRanges.length && !currentRange && !scopeRange) return;
+
+    const root = ensureOverlayRoot();
+    if (scopeRange) addOverlayRects(root, scopeRange, "ss-overlay-scope");
+    for (const r of allRanges) addOverlayRects(root, r, "ss-overlay-match");
+    addOverlayRects(root, currentRange, "ss-overlay-current");
+
+    overlayScrollHandler = () => {
+      clearTimeout(overlayRefreshTimer);
+      overlayRefreshTimer = setTimeout(() => {
+        if (supportsHighlights || !state.query) return;
+        applyHighlights();
+      }, TIMINGS.OVERLAY_REFRESH);
+    };
+    window.addEventListener("scroll", overlayScrollHandler, true);
+    window.addEventListener("resize", overlayScrollHandler);
+  }
+
   function applyHighlights() {
     clearFieldOutlines();
 
-    if (CSS.highlights) {
+    if (supportsHighlights) {
       CSS.highlights.delete(HL_ALL);
       CSS.highlights.delete(HL_CUR);
+      clearOverlayHighlights();
     }
 
     const allRanges = [];
@@ -729,7 +964,9 @@
       }
     }
 
-    if (CSS.highlights) {
+    const scopeRange = state.findInSelection && state.selectionRange ? state.selectionRange : null;
+
+    if (supportsHighlights) {
       if (allRanges.length) {
         try {
           const h = new Highlight(...allRanges);
@@ -744,15 +981,17 @@
           CSS.highlights.set(HL_CUR, h);
         } catch {}
       }
-      if (state.findInSelection && state.selectionRange) {
+      if (scopeRange) {
         try {
-          const h = new Highlight(state.selectionRange);
+          const h = new Highlight(scopeRange);
           h.priority = 0;
           CSS.highlights.set(HL_SCOPE, h);
         } catch {}
       } else {
         CSS.highlights.delete(HL_SCOPE);
       }
+    } else {
+      renderOverlayHighlights(allRanges, currentRange, scopeRange);
     }
   }
 
@@ -764,17 +1003,18 @@
   }
 
   function clearHighlights() {
-    if (CSS.highlights) {
+    if (supportsHighlights) {
       CSS.highlights.delete(HL_ALL);
       CSS.highlights.delete(HL_CUR);
       CSS.highlights.delete(HL_SCOPE);
     }
+    clearOverlayHighlights();
     clearFieldOutlines();
   }
 
-  function runLocalSearch() {
-    // Reset visibility cache for this search pass.
+  function runLocalSearch(opts = {}) {
     visibilityCache = new WeakMap();
+    const prevLocal = opts.preserveLocalIndex ? state.currentLocalIndex : -1;
 
     const regex = buildRegex(state.query, state);
     if (!regex) {
@@ -794,7 +1034,11 @@
     out.sort(compareMatchPosition);
 
     state.matches = out;
-    state.currentLocalIndex = state.matches.length ? 0 : -1;
+    if (opts.preserveLocalIndex && prevLocal >= 0 && out.length) {
+      state.currentLocalIndex = Math.min(prevLocal, out.length - 1);
+    } else {
+      state.currentLocalIndex = out.length ? 0 : -1;
+    }
     applyHighlights();
   }
 
@@ -822,11 +1066,34 @@
       if (rect.top < 0 || rect.bottom > window.innerHeight || rect.left < 0 || rect.right > window.innerWidth) {
         match.element.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
       }
-      try { match.element.setSelectionRange(match.start, match.end); } catch {}
+      const active = document.activeElement;
+      if (active === match.element || active === ui?.findInput) {
+        try { match.element.setSelectionRange(match.start, match.end); } catch {}
+      }
     }
   }
 
-  // ---------- DOM mutation observer (only active while panel is open) ----------
+  function handleMutationRefresh() {
+    if (!state.query) return;
+    if (IS_TOP && state.open) {
+      runDistributedSearch({ preservePosition: true });
+      return;
+    }
+    if (!IS_TOP) {
+      runLocalSearch({ preserveLocalIndex: true });
+      const order = getFrameOrderFromMatches(state.matches);
+      replyToTop({
+        cmd: "count-update",
+        count: state.matches.length,
+        orderTop: order.top,
+        orderLeft: order.left,
+      });
+      if (state.currentLocalIndex >= 0 && state.matches[state.currentLocalIndex]) {
+        scrollIntoView(state.matches[state.currentLocalIndex]);
+      }
+    }
+  }
+
   let mutationTimer = null;
   let mutationObserver = null;
 
@@ -835,16 +1102,7 @@
     mutationObserver = new MutationObserver(() => {
       if (!state.query) return;
       clearTimeout(mutationTimer);
-      mutationTimer = setTimeout(() => {
-        const detached = state.matches.some((m) => {
-          if (m.type === "range") return !m.range.startContainer.isConnected;
-          return !m.element.isConnected;
-        });
-        if (detached) {
-          if (IS_TOP && state.open) runDistributedSearch();
-          else runLocalSearch();
-        }
-      }, TIMINGS.MUTATION_DEBOUNCE);
+      mutationTimer = setTimeout(handleMutationRefresh, TIMINGS.MUTATION_DEBOUNCE);
     });
     mutationObserver.observe(document.documentElement, {
       childList: true,
@@ -860,9 +1118,5 @@
     clearTimeout(mutationTimer);
   }
 
-  // Subframes don't have their own panel open/close lifecycle, but they do
-  // need the mutation observer to keep their highlights in sync. Start it
-  // unconditionally for subframes (the callback is gated on state.query, so
-  // it does nothing when there's no active search).
   if (!IS_TOP) startMutationObserver();
 })();

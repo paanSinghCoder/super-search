@@ -1,0 +1,187 @@
+---
+interface Demo {
+  title: string;
+  text: string;
+  visual: string;
+  badge?: string;
+}
+
+interface Group {
+  label: string;
+  items: Demo[];
+}
+
+interface Props {
+  groups: Group[];
+}
+
+const { groups } = Astro.props;
+---
+
+<section class="features">
+  <div class="features-head">
+    <h2 class="features-title">Features</h2>
+    <p class="features-lead">Everything Chrome's find bar should have been.</p>
+  </div>
+
+  {
+    groups.map((group) => (
+      <div class="feature-group">
+        <h3 class="feature-group-label">{group.label}</h3>
+        <div class="feature-grid">
+          {group.items.map((d) => (
+            <article class="feature-card">
+              <div class="feature-visual" aria-hidden="true">
+                {d.badge && <span class="feature-badge">{d.badge}</span>}
+
+                {d.visual === "case" && (
+                  <div class="mini-scene">
+                    <div class="mini-panel">
+                      <span class="mini-input">Page</span>
+                      <span class="mini-toggles">
+                        <span class="on">Aa</span>
+                        <span>ab</span>
+                        <span>.*</span>
+                      </span>
+                    </div>
+                    <p class="mini-page">
+                      The <mark class="hit">Page</mark> loaded. The page refreshed.
+                    </p>
+                  </div>
+                )}
+
+                {d.visual === "word" && (
+                  <div class="mini-scene">
+                    <div class="mini-panel">
+                      <span class="mini-input">cat</span>
+                      <span class="mini-toggles">
+                        <span>Aa</span>
+                        <span class="on">ab</span>
+                        <span>.*</span>
+                      </span>
+                    </div>
+                    <p class="mini-page">
+                      a <mark class="hit">cat</mark> sat. the category list.
+                    </p>
+                  </div>
+                )}
+
+                {d.visual === "regex" && (
+                  <div class="mini-scene">
+                    <div class="mini-panel">
+                      <span class="mini-input mono">\d{2}/\d{2}</span>
+                      <span class="mini-toggles">
+                        <span>Aa</span>
+                        <span>ab</span>
+                        <span class="on">.*</span>
+                      </span>
+                    </div>
+                    <p class="mini-page">
+                      shipped <mark class="hit">03/15</mark>, ref <mark class="hit">#48291</mark>
+                    </p>
+                  </div>
+                )}
+
+                {d.visual === "selection" && (
+                  <div class="mini-scene mini-scene-tall">
+                    <p class="mini-page muted">Text outside the selection.</p>
+                    <div class="mini-scope">
+                      <p>
+                        Find <mark class="hit">only</mark> inside this
+                        <mark class="hit-current">block</mark>.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {d.visual === "fulltext" && (
+                  <div class="mini-scene mini-scene-tall">
+                    <div class="mini-doc">
+                      <div class="mini-doc-title">Release notes</div>
+                      <p>Rendered <mark class="hit">text</mark> in the DOM.</p>
+                      <div class="mini-ce">contenteditable <mark class="hit">node</mark></div>
+                    </div>
+                  </div>
+                )}
+
+                {d.visual === "inputs" && (
+                  <div class="mini-scene">
+                    <div class="mini-field">
+                      <label>Search query</label>
+                      <div class="mini-field-input">
+                        super<mark class="hit-current">search</mark>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {d.visual === "iframe" && (
+                  <div class="mini-scene mini-scene-tall">
+                    <div class="mini-window">
+                      <div class="mini-window-bar">example.com</div>
+                      <p>Main: <mark class="hit">data</mark> here</p>
+                      <div class="mini-iframe">
+                        <div class="mini-window-bar">widget.io</div>
+                        <p>Frame: <mark class="hit-current">data</mark> too</p>
+                      </div>
+                      <p class="mini-counter-line">2/8 matches</p>
+                    </div>
+                  </div>
+                )}
+
+                {d.visual === "counter" && (
+                  <div class="mini-scene">
+                    <div class="mini-panel wide">
+                      <span class="mini-input">function</span>
+                      <span class="mini-count">3/12</span>
+                      <span class="mini-toggles compact">
+                        <span>Aa</span>
+                        <span>ab</span>
+                        <span>.*</span>
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {d.visual === "dark" && (
+                  <div class="mini-scene">
+                    <div class="mini-panel dark wide">
+                      <span class="mini-input">query</span>
+                      <span class="mini-count">1/4</span>
+                      <span class="mini-toggles compact">
+                        <span class="on">Aa</span>
+                        <span>ab</span>
+                        <span>.*</span>
+                      </span>
+                    </div>
+                    <p class="mini-caption">Follows system appearance</p>
+                  </div>
+                )}
+
+                {d.visual === "live" && (
+                  <div class="mini-scene">
+                    <div class="mini-live">
+                      <div class="mini-live-row">
+                        <span class="mini-live-label">Before</span>
+                        <span class="mini-count">3/3</span>
+                      </div>
+                      <div class="mini-live-divider" />
+                      <div class="mini-live-row">
+                        <span class="mini-live-label">After DOM change</span>
+                        <span class="mini-count accent">5/5</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div class="feature-body">
+                <h4>{d.title}</h4>
+                <p>{d.text}</p>
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
+    ))
+  }
+</section>

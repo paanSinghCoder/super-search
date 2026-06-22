@@ -1,0 +1,187 @@
+---
+import Layout from "../layouts/Layout.astro";
+import HeroSection from "../components/HeroSection.astro";
+import FeaturesSection from "../components/FeaturesSection.astro";
+import { site } from "../config";
+
+const featureGroups = [
+  {
+    label: "Search modes",
+    items: [
+      {
+        title: "Match case",
+        text: "Find Page but not page. Alt+C or the Aa toggle.",
+        visual: "case",
+        badge: "Aa",
+      },
+      {
+        title: "Whole word",
+        text: "Match cat without hitting category. Alt+W.",
+        visual: "word",
+        badge: "ab",
+      },
+      {
+        title: "Regular expressions",
+        text: "JavaScript regex, same as VS Code. Alt+R.",
+        visual: "regex",
+        badge: ".*",
+      },
+      {
+        title: "Find in selection",
+        text: "Highlight a region, then search inside it only. Alt+L.",
+        visual: "selection",
+        badge: "Alt+L",
+      },
+    ],
+  },
+  {
+    label: "What it searches",
+    items: [
+      {
+        title: "Full-page text",
+        text: "DOM text, contenteditable blocks, and open shadow roots.",
+        visual: "fulltext",
+      },
+      {
+        title: "Inputs and textareas",
+        text: "Field values get a highlight outline and selection range.",
+        visual: "inputs",
+      },
+      {
+        title: "Cross-iframe",
+        text: "One list and counter across the main page and embedded frames.",
+        visual: "iframe",
+      },
+    ],
+  },
+  {
+    label: "Panel",
+    items: [
+      {
+        title: "Match counter",
+        text: "Position and total sit right in the find field. 3/12.",
+        visual: "counter",
+      },
+      {
+        title: "Dark mode",
+        text: "Panel styling follows your OS light or dark setting.",
+        visual: "dark",
+      },
+      {
+        title: "Live updates",
+        text: "Match count refreshes when the page mutates under you.",
+        visual: "live",
+      },
+    ],
+  },
+];
+
+const shortcuts = [
+  { keys: "Cmd / Ctrl + F", action: "Open" },
+  { keys: "Enter / Shift + Enter", action: "Next / previous match" },
+  { keys: "Alt + C / W / R / L", action: "Case / whole word / regex / in selection" },
+  { keys: "Esc", action: "Close" },
+];
+---
+
+<Layout title={`${site.name} · VS Code find for Chrome`}>
+  <header class="nav">
+    <a class="brand" href="/">
+      <img src="/icon.png" width="28" height="28" alt="" />
+      {site.name}
+    </a>
+    <div class="nav-actions">
+      <a class="nav-link" href={site.githubUrl} target="_blank" rel="noopener noreferrer" aria-label="GitHub profile">
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path
+            fill="currentColor"
+            d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"
+          />
+        </svg>
+      </a>
+      <a class="btn" href={site.chromeStoreUrl} target="_blank" rel="noopener noreferrer">Add to Chrome</a>
+    </div>
+  </header>
+
+  <HeroSection />
+
+  <FeaturesSection groups={featureGroups} />
+
+  <section class="section">
+    <div class="section-layout">
+      <h2 class="section-label">Shortcuts</h2>
+      <table class="shortcut-table">
+        <tbody>
+          {shortcuts.map((s) => (
+            <tr>
+              <th>{s.keys}</th>
+              <td>{s.action}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="section section-alt">
+    <div class="section-layout">
+      <h2 class="section-label">Install</h2>
+      <div class="install-block">
+        <p>Available on the Chrome Web Store. Works in Chrome 105 and later.</p>
+        <a class="btn" href={site.chromeStoreUrl} target="_blank" rel="noopener noreferrer">Add to Chrome</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-layout">
+      <h2 class="section-label">Set up Cmd+F</h2>
+      <div class="setup-block">
+        <p class="setup-lead">
+          SuperSearch can open with <kbd>Cmd+F</kbd> on Mac or <kbd>Ctrl+F</kbd> on Windows instead of
+          Chrome&apos;s built-in find bar. The option is on by default after install.
+        </p>
+        <ol class="setup-steps">
+          <li>
+            Open <span class="setup-url">chrome://extensions</span> and find SuperSearch.
+          </li>
+          <li>Click <strong>Extension options</strong> (or open it from the extension&apos;s details page).</li>
+          <li>
+            Under Behavior, leave <strong>Open with Cmd/Ctrl+F</strong> checked. Uncheck it anytime to
+            restore Chrome&apos;s native find.
+          </li>
+          <li>
+            Set your default toggles on the same page: Match Case, Whole Word, and Regular Expression.
+          </li>
+          <li>Press <kbd>Cmd+F</kbd> or <kbd>Ctrl+F</kbd> on a page to open the panel.</li>
+        </ol>
+        <p class="setup-note">
+          Some pages block keyboard shortcuts. Use the SuperSearch toolbar icon on those sites.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-alt">
+    <div class="section-layout">
+      <h2 class="section-label">Notes</h2>
+      <ul class="fine-print">
+        <li>Find in selection applies to the main document, not inside iframes.</li>
+        <li>Open shadow roots are included. Closed shadow roots are not.</li>
+        <li>Some pages block Cmd/Ctrl+F. Use the toolbar icon on those.</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <p>{site.name} · v{site.version}</p>
+    <a class="foot-github" href={site.githubUrl} target="_blank" rel="noopener noreferrer" aria-label="GitHub profile">
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path
+          fill="currentColor"
+          d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"
+        />
+      </svg>
+    </a>
+  </footer>
+</Layout>
