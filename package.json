@@ -4,9 +4,17 @@
   "type": "module",
   "scripts": {
     "build": "./scripts/build.sh",
+    "build:ext": "node scripts/build-extension.mjs",
+    "build:website": "npm run build --prefix website",
+    "dev:website": "npm run dev --prefix website",
+    "preview:website": "npm run preview --prefix website",
+    "typecheck": "tsc --noEmit",
     "launch": "node scripts/launch-extension.mjs"
   },
   "devDependencies": {
-    "playwright": "^1.51.0"
+    "@types/chrome": "^0.0.323",
+    "esbuild": "^0.25.5",
+    "playwright": "^1.51.0",
+    "typescript": "^5.8.3"
   }
 }
