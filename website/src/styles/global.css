@@ -926,11 +926,23 @@ mark.hit-current {
   }
 }
 
+.install-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 36rem;
+}
+
 .install-block p {
   margin: 0;
   color: var(--muted);
   font-size: 0.9375rem;
-  max-width: 32rem;
+}
+
+.install-notice {
+  font-size: 0.875rem !important;
+  color: #737373 !important;
+  line-height: 1.55;
 }
 
 /* Cmd+F setup */

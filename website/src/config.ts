@@ -9,7 +9,7 @@ export const site = {
   siteUrl: import.meta.env.PUBLIC_SITE_URL ?? SITE_URL,
   chromeStoreUrl: import.meta.env.PUBLIC_CHROME_STORE_URL ?? CHROME_STORE_URL,
   githubUrl: import.meta.env.PUBLIC_GITHUB_URL ?? GITHUB_REPO_URL,
-  version: "1.2.0",
+  version: "1.2.1",
 
   // SEO
   description:

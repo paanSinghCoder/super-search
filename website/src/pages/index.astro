@@ -127,7 +127,14 @@ const shortcuts = [
     <div class="section-layout">
       <h2 class="section-label">Install</h2>
       <div class="install-block">
-        <p>Available on the Chrome Web Store. Works in Chrome 105 and later.</p>
+        <div class="install-copy">
+          <p>Available on the Chrome Web Store. Works in Chrome 105 and later.</p>
+          <p class="install-notice">
+            If Chrome shows <strong>“This extension is not trusted by Enhanced Safe Browsing,”</strong> that is
+            normal for newer extensions. SuperSearch is safe — click <strong>Continue to install</strong>. Google
+            removes this notice automatically after the publisher builds trust over time.
+          </p>
+        </div>
         <a class="btn" href={site.chromeStoreUrl} target="_blank" rel="noopener noreferrer">Add to Chrome</a>
       </div>
     </div>

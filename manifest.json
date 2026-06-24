@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SuperSearch - VS Code Find for Chrome",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "VS Code-style find overlay with regex, whole word, match case, find-in-selection, and cross-iframe search.",
   "homepage_url": "https://super-search-gamma.vercel.app",
   "permissions": ["storage"],
